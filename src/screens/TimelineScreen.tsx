@@ -1,12 +1,16 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { CalendarDays, Lock, MapPin, Sparkles } from 'lucide-react-native';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { timelineMonths } from '../data/happened';
 import { colors, fonts, radius } from '../theme/tokens';
 
-export function TimelineScreen() {
+type Props = {
+  onOpenPlace?: (placeName: string) => void;
+};
+
+export function TimelineScreen({ onOpenPlace }: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -17,7 +21,7 @@ export function TimelineScreen() {
           <Text style={styles.title}>Stories accumulate by month</Text>
         </View>
 
-        <View style={styles.recallCard}>
+        <Pressable style={styles.recallCard} onPress={() => onOpenPlace?.('Seolleung Station Cafe')}>
           <View style={styles.recallIcon}>
             <Sparkles color={colors.ink} size={22} strokeWidth={2.8} />
           </View>
@@ -25,11 +29,11 @@ export function TimelineScreen() {
             <Text style={styles.recallTitle}>3 years ago at Seolleung Station Cafe</Text>
             <Text style={styles.recallMeta}>Reopened because you are back within 200m.</Text>
           </View>
-        </View>
+        </Pressable>
 
         <View style={styles.monthList}>
           {timelineMonths.map((month) => (
-            <View key={month.id} style={styles.monthBlock}>
+            <Pressable key={month.id} style={styles.monthBlock} onPress={() => onOpenPlace?.(month.placeName)}>
               <View style={styles.monthHeader}>
                 <CalendarDays color={colors.cyan} size={18} />
                 <Text style={styles.monthTitle}>{month.title}</Text>
@@ -48,7 +52,7 @@ export function TimelineScreen() {
                   {item.unlocked ? <Text style={styles.openText}>Open</Text> : <Lock color={colors.muted} size={17} />}
                 </View>
               ))}
-            </View>
+            </Pressable>
           ))}
         </View>
       </ScrollView>

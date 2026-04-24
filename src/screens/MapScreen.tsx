@@ -1,12 +1,16 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { LocateFixed, Lock, MapPin, Navigation } from 'lucide-react-native';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { placeBubbles } from '../data/happened';
 import { colors, fonts, gradients, radius } from '../theme/tokens';
 
-export function MapScreen() {
+type Props = {
+  onOpenPlace?: (placeName: string) => void;
+};
+
+export function MapScreen({ onOpenPlace }: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -31,8 +35,9 @@ export function MapScreen() {
             <Navigation color={colors.ink} size={16} fill={colors.ink} />
           </View>
           {placeBubbles.map((place) => (
-            <View
+            <Pressable
               key={place.id}
+              onPress={() => onOpenPlace?.(getDetailPlaceName(place.id))}
               style={[
                 styles.placeBubble,
                 {
@@ -49,7 +54,7 @@ export function MapScreen() {
                   <Text style={styles.bubbleName}>{place.name}</Text>
                 </View>
               </LinearGradient>
-            </View>
+            </Pressable>
           ))}
         </View>
 
@@ -61,19 +66,31 @@ export function MapScreen() {
 
         <View style={styles.placeList}>
           {placeBubbles.map((place) => (
-            <View key={place.id} style={styles.placeRow}>
+            <Pressable key={place.id} style={styles.placeRow} onPress={() => onOpenPlace?.(getDetailPlaceName(place.id))}>
               <View style={[styles.placeDot, { backgroundColor: place.unlocked ? colors.lime : colors.coral }]} />
               <View style={styles.placeCopy}>
                 <Text style={styles.placeName}>{place.name}</Text>
                 <Text style={styles.placeSubtitle}>{place.subtitle}</Text>
               </View>
               <Text style={styles.placeState}>{place.unlocked ? 'Open' : 'Locked'}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
       </ScrollView>
     </LinearGradient>
   );
+}
+
+function getDetailPlaceName(placeId: string) {
+  const placeNames: Record<string, string> = {
+    seolleung: 'Seolleung Station Cafe',
+    office: 'Gangnam Office',
+    cafe: 'Corner Cafe',
+    school: 'Daechi School Yard',
+    river: 'Han River Steps',
+  };
+
+  return placeNames[placeId] ?? 'Seolleung Station Cafe';
 }
 
 const styles = StyleSheet.create({

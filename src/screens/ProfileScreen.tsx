@@ -1,6 +1,6 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Ban, Bell, Shield, Trash2, UserPlus } from 'lucide-react-native';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fonts, radius } from '../theme/tokens';
@@ -12,7 +12,12 @@ const safetyRows = [
   { id: 'delete', label: 'Account deletion', value: 'Available', Icon: Trash2 },
 ];
 
-export function ProfileScreen() {
+type Props = {
+  onNotice?: (message: string) => void;
+  onSignOut?: () => void;
+};
+
+export function ProfileScreen({ onNotice, onSignOut }: Props) {
   const insets = useSafeAreaInsets();
 
   return (
@@ -26,9 +31,9 @@ export function ProfileScreen() {
             <Text style={styles.name}>Junn</Text>
             <Text style={styles.handle}>@junn</Text>
           </View>
-          <View style={styles.addButton}>
+          <Pressable style={styles.addButton} onPress={() => onNotice?.('Find friends flow is ready')}>
             <UserPlus color={colors.ink} size={19} strokeWidth={2.8} />
-          </View>
+          </Pressable>
         </View>
 
         <View style={styles.stats}>
@@ -46,15 +51,19 @@ export function ProfileScreen() {
         <View style={styles.section}>
           <Text style={styles.sectionLabel}>Safety</Text>
           {safetyRows.map(({ id, label, value, Icon }) => (
-            <View key={id} style={styles.safetyRow}>
+            <Pressable key={id} style={styles.safetyRow} onPress={() => onNotice?.(`${label} opened`)}>
               <View style={styles.safetyIcon}>
                 <Icon color={colors.text} size={18} strokeWidth={2.4} />
               </View>
               <Text style={styles.safetyLabel}>{label}</Text>
               <Text style={styles.safetyValue}>{value}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
+
+        <Pressable style={styles.signOutButton} onPress={onSignOut}>
+          <Text style={styles.signOutText}>Return to welcome</Text>
+        </Pressable>
       </ScrollView>
     </LinearGradient>
   );
@@ -213,5 +222,21 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 12,
     fontWeight: '800',
+  },
+  signOutButton: {
+    height: 50,
+    borderRadius: radius.panel,
+    borderColor: colors.line,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    marginTop: 14,
+    backgroundColor: 'rgba(245, 247, 242, 0.06)',
+  },
+  signOutText: {
+    color: colors.text,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '900',
   },
 });

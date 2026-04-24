@@ -45,3 +45,4 @@ reports/
 - [Report #2: 아날로그 필름 감성 반영](260424-002-analog-film-design-feedback/report.md)
 - [Report #3: 아날로그 필름 무드 재작업](260424-003-stronger-analog-film-direction/report.md)
 - [Report #4: 실제 앱 렌더 스크린샷](260424-004-actual-app-screenshots/report.md)
+- [Report #5: 테스트 가능한 앱 플로우](260424-005-testable-app-flow/report.md)

@@ -5,12 +5,16 @@ import net from 'node:net';
 import path from 'node:path';
 
 const BASE_PORT = Number.parseInt(process.env.HAPPENED_CAPTURE_PORT ?? '8197', 10);
-const OUT_DIR = process.env.HAPPENED_CAPTURE_DIR ?? 'reports/260424-004-actual-app-screenshots/assets';
+const OUT_DIR = process.env.HAPPENED_CAPTURE_DIR ?? 'reports/260424-005-testable-app-flow/assets';
 const CHROME = process.env.CHROME_PATH ?? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome';
 
 const screens = [
+  { name: 'welcome', query: 'capture=1&stage=welcome' },
+  { name: 'auth', query: 'capture=1&stage=auth' },
+  { name: 'permissions', query: 'capture=1&stage=permissions' },
   { name: 'home-open', query: 'capture=1&screen=home&homePost=0' },
   { name: 'home-locked', query: 'capture=1&screen=home&homePost=1' },
+  { name: 'place-detail', query: 'capture=1&stage=app&place=Seolleung%20Station%20Cafe' },
   { name: 'map', query: 'capture=1&screen=map' },
   { name: 'capture', query: 'capture=1&screen=capture' },
   { name: 'timeline', query: 'capture=1&screen=timeline' },

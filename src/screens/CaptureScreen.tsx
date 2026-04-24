@@ -1,26 +1,39 @@
 import * as Haptics from 'expo-haptics';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Camera, Circle, Clock, ImagePlus, MapPin, ShieldCheck } from 'lucide-react-native';
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { colors, fonts, radius } from '../theme/tokens';
+import type { CheckInToken, Visibility } from '../types/happened';
 
-export function CaptureScreen() {
+type Props = {
+  placeName: string;
+  token: CheckInToken | null;
+  onIssueToken: () => void;
+  onUpload: () => void;
+  onOpenPlace?: (placeName: string) => void;
+};
+
+export function CaptureScreen({ placeName, token, onIssueToken, onUpload, onOpenPlace }: Props) {
   const insets = useSafeAreaInsets();
+  const [visibility, setVisibility] = useState<Visibility>('Followers');
+  const activeToken = token?.placeName === placeName ? token : null;
 
-  const handlePress = () => {
+  const handlePress = (action: () => void) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
+    action();
   };
 
   return (
     <LinearGradient colors={['#05070D', '#101018', '#091A19']} style={styles.screen}>
       <View style={[styles.content, { paddingTop: insets.top + 18 }]}>
         <View style={styles.header}>
-          <View>
+          <Pressable onPress={() => onOpenPlace?.(placeName)}>
             <Text style={styles.kicker}>Capture here</Text>
-            <Text style={styles.title}>Seolleung Station Cafe</Text>
-          </View>
+            <Text style={styles.title}>{placeName}</Text>
+          </Pressable>
           <View style={styles.radiusPill}>
             <MapPin color={colors.ink} size={15} strokeWidth={2.8} />
             <Text style={styles.radiusText}>84m</Text>
@@ -37,24 +50,36 @@ export function CaptureScreen() {
 
         <View style={styles.tokenPanel}>
           <View style={styles.tokenIcon}>
-            <ShieldCheck color={colors.lime} size={22} strokeWidth={2.4} />
+            <ShieldCheck color={activeToken ? colors.lime : colors.muted} size={22} strokeWidth={2.4} />
           </View>
           <View style={styles.tokenCopy}>
-            <Text style={styles.tokenTitle}>Check-in token ready</Text>
-            <Text style={styles.tokenMeta}>120m upload radius, 12h later upload window</Text>
+            <Text style={styles.tokenTitle}>{activeToken ? 'Check-in token active' : 'Check-in required'}</Text>
+            <Text style={styles.tokenMeta}>
+              {activeToken
+                ? `${activeToken.expiresInLabel} left · ${activeToken.uploadsRemaining} mock uploads remaining`
+                : 'Issue a 12h token inside 120m before uploading.'}
+            </Text>
           </View>
           <Clock color={colors.muted} size={21} />
         </View>
 
+        <View style={styles.visibilityRow}>
+          {(['Followers', 'Public'] as const).map((item) => (
+            <Pressable key={item} style={[styles.visibilityPill, visibility === item && styles.visibilityPillActive]} onPress={() => setVisibility(item)}>
+              <Text style={[styles.visibilityText, visibility === item && styles.visibilityTextActive]}>{item}</Text>
+            </Pressable>
+          ))}
+        </View>
+
         <View style={styles.controls}>
-          <Pressable style={styles.sideButton} onPress={handlePress}>
+          <Pressable style={styles.sideButton} onPress={() => handlePress(activeToken ? onUpload : onIssueToken)}>
             <ImagePlus color={colors.text} size={25} />
           </Pressable>
-          <Pressable style={styles.shutter} onPress={handlePress}>
+          <Pressable style={styles.shutter} onPress={() => handlePress(activeToken ? onUpload : onIssueToken)}>
             <Circle color={colors.ink} size={62} fill={colors.text} />
           </Pressable>
-          <Pressable style={styles.sideButton} onPress={handlePress}>
-            <Text style={styles.modeText}>12h</Text>
+          <Pressable style={styles.sideButton} onPress={() => handlePress(onIssueToken)}>
+            <Text style={styles.modeText}>{activeToken ? 'Re' : '12h'}</Text>
           </Pressable>
         </View>
       </View>
@@ -179,11 +204,39 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   controls: {
-    height: 92,
+    height: 84,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     gap: 34,
+  },
+  visibilityRow: {
+    flexDirection: 'row',
+    gap: 9,
+    marginTop: 10,
+  },
+  visibilityPill: {
+    flex: 1,
+    height: 42,
+    borderRadius: radius.panel,
+    borderColor: colors.line,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: 'rgba(245, 247, 242, 0.06)',
+  },
+  visibilityPillActive: {
+    borderColor: 'rgba(199, 249, 91, 0.42)',
+    backgroundColor: 'rgba(199, 249, 91, 0.15)',
+  },
+  visibilityText: {
+    color: colors.muted,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '900',
+  },
+  visibilityTextActive: {
+    color: colors.text,
   },
   sideButton: {
     width: 52,

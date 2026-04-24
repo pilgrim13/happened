@@ -12,6 +12,7 @@ Happened is a location-locked memory app: moments left at a place reopen when pe
 
 ## MVP Focus
 
+- Testable mock app flow from welcome, auth, permissions, home, place detail, capture, map, timeline, and profile
 - Home feed with Following, Nearby, and Memories modes
 - Place-first content hierarchy: place name, distance, lock state, and visibility before social chrome
 - Location lock states: blurred preview when far, full memory when inside the unlock radius

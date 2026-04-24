@@ -6,6 +6,8 @@ export type UnlockState = 'open' | 'nearby' | 'locked';
 
 export type Visibility = 'Followers' | 'Public';
 
+export type AppStage = 'welcome' | 'auth' | 'permissions' | 'app';
+
 export type MemoryPost = {
   id: string;
   mode: FeedMode;
@@ -28,6 +30,13 @@ export type MemoryPost = {
     replies: number;
     saves: number;
   };
+};
+
+export type CheckInToken = {
+  placeName: string;
+  issuedAtLabel: string;
+  expiresInLabel: string;
+  uploadsRemaining: number;
 };
 
 export type PlaceBubble = {

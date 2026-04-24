@@ -1,6 +1,7 @@
 import { BlurView } from 'expo-blur';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bookmark, Eye, Flag, Heart, MessageCircle, MoreVertical, UsersRound } from 'lucide-react-native';
+import { useState, type ReactNode } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -9,21 +10,27 @@ import { feedModes, memoryPosts } from '../data/happened';
 import { colors, fonts, radius } from '../theme/tokens';
 import type { FeedMode, MemoryPost } from '../types/happened';
 
-const selectedMode: FeedMode = 'Following';
-
 type HomeScreenProps = {
   initialIndex?: number;
+  onOpenPlace?: (placeName: string) => void;
+  onCaptureAtPlace?: (placeName: string) => void;
+  onPostAction?: (message: string) => void;
 };
 
-export function HomeScreen({ initialIndex = 0 }: HomeScreenProps) {
+export function HomeScreen({ initialIndex = 0, onOpenPlace, onCaptureAtPlace, onPostAction }: HomeScreenProps) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
-  const safeInitialIndex = Math.max(0, Math.min(initialIndex, memoryPosts.length - 1));
+  const requestedPost = memoryPosts[Math.max(0, Math.min(initialIndex, memoryPosts.length - 1))];
+  const [selectedMode, setSelectedMode] = useState<FeedMode>(requestedPost?.mode ?? 'Following');
+  const visiblePosts = memoryPosts.filter((post) => post.mode === selectedMode);
+  const requestedIndex = visiblePosts.findIndex((post) => post.id === requestedPost?.id);
+  const safeInitialIndex = Math.max(0, requestedIndex);
 
   return (
     <View style={styles.screen}>
       <FlatList
-        data={memoryPosts}
+        key={selectedMode}
+        data={visiblePosts}
         keyExtractor={(item) => item.id}
         initialScrollIndex={safeInitialIndex}
         getItemLayout={(_, index) => ({ length: height, offset: height * index, index })}
@@ -31,13 +38,42 @@ export function HomeScreen({ initialIndex = 0 }: HomeScreenProps) {
         snapToInterval={height}
         decelerationRate="fast"
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => <FeedItem item={item} height={height} topInset={insets.top} />}
+        renderItem={({ item }) => (
+          <FeedItem
+            item={item}
+            height={height}
+            topInset={insets.top}
+            selectedMode={selectedMode}
+            onModeChange={setSelectedMode}
+            onOpenPlace={onOpenPlace}
+            onCaptureAtPlace={onCaptureAtPlace}
+            onPostAction={onPostAction}
+          />
+        )}
       />
     </View>
   );
 }
 
-function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number; topInset: number }) {
+function FeedItem({
+  item,
+  height,
+  topInset,
+  selectedMode,
+  onModeChange,
+  onOpenPlace,
+  onCaptureAtPlace,
+  onPostAction,
+}: {
+  item: MemoryPost;
+  height: number;
+  topInset: number;
+  selectedMode: FeedMode;
+  onModeChange: (mode: FeedMode) => void;
+  onOpenPlace?: (placeName: string) => void;
+  onCaptureAtPlace?: (placeName: string) => void;
+  onPostAction?: (message: string) => void;
+}) {
   const locked = item.unlockState === 'locked';
   const placeTitle = formatPlaceTitle(item.placeName);
 
@@ -75,35 +111,37 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
         <Text style={styles.brand}>Happened</Text>
         <View style={styles.modeRow}>
           {feedModes.map((mode) => (
-            <View key={mode} style={[styles.modePill, mode === selectedMode && styles.modePillActive]}>
+            <Pressable key={mode} style={[styles.modePill, mode === selectedMode && styles.modePillActive]} onPress={() => onModeChange(mode)}>
               <Text style={[styles.modeText, mode === selectedMode && styles.modeTextActive]}>{mode}</Text>
-            </View>
+            </Pressable>
           ))}
         </View>
       </View>
 
       <View style={styles.actionRail}>
-        <RailButton icon={<Heart color={colors.text} size={22} />} label={item.stats.echoes} />
-        <RailButton icon={<MessageCircle color={colors.text} size={22} />} label={item.stats.replies} />
-        <RailButton icon={<Bookmark color={colors.text} size={22} />} label={item.stats.saves} />
-        <RailButton icon={<Flag color={colors.faint} size={20} />} label="Hide" muted />
+        <RailButton icon={<Heart color={colors.text} size={22} />} label={item.stats.echoes} onPress={() => onPostAction?.('Echo saved')} />
+        <RailButton icon={<MessageCircle color={colors.text} size={22} />} label={item.stats.replies} onPress={() => onPostAction?.('Reply composer is ready')} />
+        <RailButton icon={<Bookmark color={colors.text} size={22} />} label={item.stats.saves} onPress={() => onPostAction?.('Saved to your roll')} />
+        <RailButton icon={<Flag color={colors.faint} size={20} />} label="Hide" muted onPress={() => onPostAction?.('Post hidden from this feed')} />
         <MoreVertical color={colors.muted} size={22} />
       </View>
 
       <View style={styles.story}>
         {item.recallLabel ? <Text style={styles.recall}>{item.recallLabel}</Text> : null}
-        <StatusPill state={item.unlockState} distanceMeters={item.distanceMeters} radiusMeters={item.unlockRadiusMeters} />
-        <View style={styles.paperLabel}>
-          <Text style={styles.paperLabelText}>{item.filmStamp}</Text>
-        </View>
-        <Text style={styles.place}>{placeTitle}</Text>
-        <View style={styles.placeMetaRow}>
-          <Text style={styles.placeMeta}>{item.city}</Text>
-          <View style={styles.dot} />
-          <Text style={styles.placeMeta}>{item.visibility}</Text>
-          <View style={styles.dot} />
-          <Text style={styles.placeMeta}>{item.timeLabel}</Text>
-        </View>
+        <Pressable style={styles.placeButton} onPress={() => onOpenPlace?.(item.placeName)}>
+          <StatusPill state={item.unlockState} distanceMeters={item.distanceMeters} radiusMeters={item.unlockRadiusMeters} />
+          <View style={styles.paperLabel}>
+            <Text style={styles.paperLabelText}>{item.filmStamp}</Text>
+          </View>
+          <Text style={styles.place}>{placeTitle}</Text>
+          <View style={styles.placeMetaRow}>
+            <Text style={styles.placeMeta}>{item.city}</Text>
+            <View style={styles.dot} />
+            <Text style={styles.placeMeta}>{item.visibility}</Text>
+            <View style={styles.dot} />
+            <Text style={styles.placeMeta}>{item.timeLabel}</Text>
+          </View>
+        </Pressable>
         <Text style={styles.caption}>{item.caption}</Text>
         <View style={styles.authorRow}>
           <View style={[styles.avatar, { borderColor: item.accentColor }]}>
@@ -113,9 +151,9 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
             <Text style={styles.author}>{item.authorName}</Text>
             <Text style={styles.handle}>{item.authorHandle}</Text>
           </View>
-          <View style={styles.followPill}>
+          <Pressable style={styles.followPill} onPress={() => onCaptureAtPlace?.(item.placeName)}>
             <UsersRound color={colors.ink} size={14} strokeWidth={2.8} />
-          </View>
+          </Pressable>
         </View>
       </View>
     </View>
@@ -163,9 +201,9 @@ function FilmFrame({ stamp, placeName }: { stamp: string; placeName: string }) {
   );
 }
 
-function RailButton({ icon, label, muted = false }: { icon: React.ReactNode; label: string | number; muted?: boolean }) {
+function RailButton({ icon, label, muted = false, onPress }: { icon: ReactNode; label: string | number; muted?: boolean; onPress?: () => void }) {
   return (
-    <Pressable style={styles.railButton}>
+    <Pressable style={styles.railButton} onPress={onPress}>
       <View style={[styles.railIcon, muted && styles.railIconMuted]}>{icon}</View>
       <Text style={[styles.railLabel, muted && styles.railLabelMuted]}>{label}</Text>
     </Pressable>
@@ -460,6 +498,10 @@ const styles = StyleSheet.create({
     left: 16,
     right: 72,
     bottom: 104,
+    gap: 9,
+  },
+  placeButton: {
+    alignItems: 'flex-start',
     gap: 9,
   },
   recall: {
