@@ -42,3 +42,4 @@ reports/
 ## 현재 보고
 
 - [Report #1: MVP 기획서와 디자인 프로토타입](260424-001-project-brief/report.md)
+- [Report #2: 아날로그 필름 감성 반영](260424-002-analog-film-design-feedback/report.md)

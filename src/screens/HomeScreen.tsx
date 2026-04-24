@@ -42,7 +42,9 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
         <View style={[styles.mediaBlock, styles.mediaBlockB]} />
         <View style={[styles.mediaBlock, styles.mediaBlockC]} />
       </View>
+      <FilmFrame stamp={item.filmStamp} />
       <LinearGradient colors={['rgba(5, 7, 13, 0.1)', 'rgba(5, 7, 13, 0.18)', 'rgba(5, 7, 13, 0.86)']} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['rgba(255, 111, 97, 0.22)', 'rgba(255, 111, 97, 0)']} style={styles.lightLeak} />
 
       {locked ? (
         <BlurView intensity={48} tint="dark" style={styles.lockedLayer}>
@@ -103,6 +105,33 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
   );
 }
 
+function FilmFrame({ stamp }: { stamp: string }) {
+  const holes = Array.from({ length: 12 }, (_, index) => index);
+
+  return (
+    <View pointerEvents="none" style={styles.filmOverlay}>
+      <View style={styles.filmStripLeft}>
+        {holes.map((hole) => (
+          <View key={`left-${hole}`} style={styles.filmHole} />
+        ))}
+      </View>
+      <View style={styles.filmStripRight}>
+        {holes.map((hole) => (
+          <View key={`right-${hole}`} style={styles.filmHole} />
+        ))}
+      </View>
+      <View style={styles.filmTopStamp}>
+        <Text style={styles.filmText}>HAPPENED 400</Text>
+        <Text style={styles.filmText}>{stamp}</Text>
+      </View>
+      <View style={styles.filmBottomStamp}>
+        <Text style={styles.filmText}>PLACE ROLL</Text>
+        <Text style={styles.filmText}>LOCKED MEMORY NEGATIVE</Text>
+      </View>
+    </View>
+  );
+}
+
 function RailButton({ icon, label, muted = false }: { icon: React.ReactNode; label: string | number; muted?: boolean }) {
   return (
     <Pressable style={styles.railButton}>
@@ -134,6 +163,70 @@ const styles = StyleSheet.create({
   mediaGrain: {
     ...StyleSheet.absoluteFillObject,
     opacity: 0.62,
+  },
+  lightLeak: {
+    position: 'absolute',
+    top: 0,
+    right: 0,
+    width: 170,
+    height: 360,
+    opacity: 0.75,
+  },
+  filmOverlay: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  filmStripLeft: {
+    position: 'absolute',
+    left: 8,
+    top: 112,
+    bottom: 134,
+    width: 17,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    opacity: 0.38,
+  },
+  filmStripRight: {
+    position: 'absolute',
+    right: 8,
+    top: 112,
+    bottom: 134,
+    width: 17,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    opacity: 0.28,
+  },
+  filmHole: {
+    width: 9,
+    height: 19,
+    borderRadius: 3,
+    backgroundColor: 'rgba(5, 7, 13, 0.76)',
+    borderColor: 'rgba(245, 247, 242, 0.16)',
+    borderWidth: 1,
+  },
+  filmTopStamp: {
+    position: 'absolute',
+    left: 36,
+    right: 36,
+    top: 134,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    opacity: 0.42,
+  },
+  filmBottomStamp: {
+    position: 'absolute',
+    left: 36,
+    right: 36,
+    bottom: 178,
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    opacity: 0.34,
+  },
+  filmText: {
+    color: colors.text,
+    fontFamily: fonts.body,
+    fontSize: 9,
+    fontWeight: '900',
+    letterSpacing: 0,
   },
   mediaBlock: {
     position: 'absolute',

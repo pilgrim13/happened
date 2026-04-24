@@ -53,6 +53,7 @@ The differentiators are:
 - Do not make the app feel like a rigid map utility.
 - Make it immersive like an entertainment app.
 - Keep the tone emotional but not sentimental.
+- Add analog film cues such as grain, light leaks, film-frame edges, contact-sheet rhythm, and timestamp stamps when they reinforce memory.
 - Support dense information with clear priority.
 - Use a dark base so places and media stand out.
 

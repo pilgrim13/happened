@@ -19,6 +19,7 @@ export type MemoryPost = {
   visibility: Visibility;
   caption: string;
   timeLabel: string;
+  filmStamp: string;
   recallLabel?: string;
   mediaColors: readonly [string, string, string];
   accentColor: string;
