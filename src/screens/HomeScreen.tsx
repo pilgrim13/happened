@@ -36,13 +36,20 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
   return (
     <View style={[styles.feedItem, { height }]}>
       <LinearGradient colors={item.mediaColors} style={StyleSheet.absoluteFill} />
+      <LinearGradient colors={['rgba(231, 216, 185, 0.18)', 'rgba(5, 7, 13, 0)', 'rgba(242, 169, 59, 0.12)']} style={StyleSheet.absoluteFill} />
       <View style={[styles.lightBand, { backgroundColor: item.accentColor }]} />
+      <View style={styles.paperMatte} />
       <View style={styles.mediaGrain}>
         <View style={[styles.mediaBlock, styles.mediaBlockA]} />
         <View style={[styles.mediaBlock, styles.mediaBlockB]} />
         <View style={[styles.mediaBlock, styles.mediaBlockC]} />
+        <View style={styles.contactSheet}>
+          <View style={styles.contactThumb} />
+          <View style={[styles.contactThumb, styles.contactThumbDim]} />
+          <View style={styles.contactThumb} />
+        </View>
       </View>
-      <FilmFrame stamp={item.filmStamp} />
+      <FilmFrame stamp={item.filmStamp} placeName={item.placeName} />
       <LinearGradient colors={['rgba(5, 7, 13, 0.1)', 'rgba(5, 7, 13, 0.18)', 'rgba(5, 7, 13, 0.86)']} style={StyleSheet.absoluteFill} />
       <LinearGradient colors={['rgba(255, 111, 97, 0.22)', 'rgba(255, 111, 97, 0)']} style={styles.lightLeak} />
 
@@ -51,7 +58,7 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
           <View style={styles.lockedFrame}>
             <Eye color={colors.text} size={22} strokeWidth={2.4} />
             <Text style={styles.lockedTitle}>Preview only</Text>
-            <Text style={styles.lockedText}>Return to {item.placeName} to open the full memory.</Text>
+            <Text style={styles.lockedText}>Return to {item.placeName} to develop the full frame.</Text>
           </View>
         </BlurView>
       ) : null}
@@ -78,6 +85,9 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
       <View style={styles.story}>
         {item.recallLabel ? <Text style={styles.recall}>{item.recallLabel}</Text> : null}
         <StatusPill state={item.unlockState} distanceMeters={item.distanceMeters} radiusMeters={item.unlockRadiusMeters} />
+        <View style={styles.paperLabel}>
+          <Text style={styles.paperLabelText}>{item.filmStamp}</Text>
+        </View>
         <Text style={styles.place}>{item.placeName}</Text>
         <View style={styles.placeMetaRow}>
           <Text style={styles.placeMeta}>{item.city}</Text>
@@ -105,11 +115,12 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
   );
 }
 
-function FilmFrame({ stamp }: { stamp: string }) {
-  const holes = Array.from({ length: 12 }, (_, index) => index);
+function FilmFrame({ stamp, placeName }: { stamp: string; placeName: string }) {
+  const holes = Array.from({ length: 13 }, (_, index) => index);
 
   return (
     <View pointerEvents="none" style={styles.filmOverlay}>
+      <View style={styles.negativeFrame} />
       <View style={styles.filmStripLeft}>
         {holes.map((hole) => (
           <View key={`left-${hole}`} style={styles.filmHole} />
@@ -126,7 +137,10 @@ function FilmFrame({ stamp }: { stamp: string }) {
       </View>
       <View style={styles.filmBottomStamp}>
         <Text style={styles.filmText}>PLACE ROLL</Text>
-        <Text style={styles.filmText}>LOCKED MEMORY NEGATIVE</Text>
+        <Text style={styles.filmText}>{placeName.toUpperCase().slice(0, 24)}</Text>
+      </View>
+      <View style={styles.dateBurn}>
+        <Text style={styles.dateBurnText}>{stamp.split('/')[0].trim()}</Text>
       </View>
     </View>
   );
@@ -153,12 +167,23 @@ const styles = StyleSheet.create({
   },
   lightBand: {
     position: 'absolute',
-    width: 110,
+    width: 92,
     height: '120%',
     right: 32,
     top: -40,
-    opacity: 0.14,
+    opacity: 0.18,
     transform: [{ rotate: '15deg' }],
+  },
+  paperMatte: {
+    position: 'absolute',
+    left: 29,
+    right: 29,
+    top: 112,
+    bottom: 154,
+    borderColor: 'rgba(231, 216, 185, 0.42)',
+    borderWidth: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(231, 216, 185, 0.045)',
   },
   mediaGrain: {
     ...StyleSheet.absoluteFillObject,
@@ -175,64 +200,97 @@ const styles = StyleSheet.create({
   filmOverlay: {
     ...StyleSheet.absoluteFillObject,
   },
+  negativeFrame: {
+    position: 'absolute',
+    left: 23,
+    right: 23,
+    top: 104,
+    bottom: 145,
+    borderColor: 'rgba(26, 15, 10, 0.82)',
+    borderWidth: 8,
+    borderRadius: 10,
+  },
   filmStripLeft: {
     position: 'absolute',
-    left: 8,
-    top: 112,
-    bottom: 134,
-    width: 17,
+    left: 5,
+    top: 96,
+    bottom: 136,
+    width: 22,
     justifyContent: 'space-between',
     alignItems: 'center',
-    opacity: 0.38,
+    opacity: 0.88,
+    backgroundColor: 'rgba(26, 15, 10, 0.5)',
+    borderRadius: 4,
+    paddingVertical: 9,
   },
   filmStripRight: {
     position: 'absolute',
-    right: 8,
-    top: 112,
-    bottom: 134,
-    width: 17,
+    right: 5,
+    top: 96,
+    bottom: 136,
+    width: 22,
     justifyContent: 'space-between',
     alignItems: 'center',
-    opacity: 0.28,
+    opacity: 0.62,
+    backgroundColor: 'rgba(26, 15, 10, 0.36)',
+    borderRadius: 4,
+    paddingVertical: 9,
   },
   filmHole: {
-    width: 9,
-    height: 19,
+    width: 11,
+    height: 22,
     borderRadius: 3,
-    backgroundColor: 'rgba(5, 7, 13, 0.76)',
-    borderColor: 'rgba(245, 247, 242, 0.16)',
+    backgroundColor: 'rgba(231, 216, 185, 0.78)',
+    borderColor: 'rgba(5, 7, 13, 0.3)',
     borderWidth: 1,
   },
   filmTopStamp: {
     position: 'absolute',
     left: 36,
     right: 36,
-    top: 134,
+    top: 109,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    opacity: 0.42,
+    opacity: 0.72,
   },
   filmBottomStamp: {
     position: 'absolute',
     left: 36,
     right: 36,
-    bottom: 178,
+    bottom: 154,
     flexDirection: 'row',
     justifyContent: 'space-between',
-    opacity: 0.34,
+    opacity: 0.64,
   },
   filmText: {
-    color: colors.text,
+    color: colors.paper,
     fontFamily: fonts.body,
     fontSize: 9,
     fontWeight: '900',
     letterSpacing: 0,
   },
+  dateBurn: {
+    position: 'absolute',
+    right: 38,
+    top: 186,
+    borderRadius: 3,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    backgroundColor: 'rgba(26, 15, 10, 0.58)',
+    borderColor: 'rgba(242, 169, 59, 0.34)',
+    borderWidth: 1,
+  },
+  dateBurnText: {
+    color: colors.amber,
+    fontFamily: fonts.body,
+    fontSize: 11,
+    fontWeight: '900',
+  },
   mediaBlock: {
     position: 'absolute',
-    borderColor: 'rgba(255, 255, 255, 0.18)',
+    borderColor: 'rgba(231, 216, 185, 0.3)',
     borderWidth: 1,
-    backgroundColor: 'rgba(255, 255, 255, 0.08)',
+    backgroundColor: 'rgba(231, 216, 185, 0.11)',
   },
   mediaBlockA: {
     width: 220,
@@ -258,6 +316,26 @@ const styles = StyleSheet.create({
     borderRadius: radius.panel,
     transform: [{ rotate: '2deg' }],
   },
+  contactSheet: {
+    position: 'absolute',
+    left: 45,
+    right: 45,
+    top: 123,
+    height: 52,
+    flexDirection: 'row',
+    gap: 8,
+    opacity: 0.42,
+  },
+  contactThumb: {
+    flex: 1,
+    borderRadius: 3,
+    backgroundColor: 'rgba(26, 15, 10, 0.58)',
+    borderColor: 'rgba(231, 216, 185, 0.36)',
+    borderWidth: 1,
+  },
+  contactThumbDim: {
+    opacity: 0.56,
+  },
   lockedLayer: {
     ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
@@ -268,10 +346,10 @@ const styles = StyleSheet.create({
     width: '100%',
     maxWidth: 330,
     borderRadius: radius.panel,
-    borderColor: colors.line,
-    borderWidth: 1,
+    borderColor: 'rgba(231, 216, 185, 0.48)',
+    borderWidth: 2,
     padding: 18,
-    backgroundColor: 'rgba(5, 7, 13, 0.46)',
+    backgroundColor: 'rgba(26, 15, 10, 0.58)',
     alignItems: 'center',
     gap: 7,
   },
@@ -369,11 +447,25 @@ const styles = StyleSheet.create({
   },
   recall: {
     alignSelf: 'flex-start',
-    color: colors.lime,
+    color: colors.paper,
     fontFamily: fonts.body,
     fontSize: 12,
     fontWeight: '900',
     textTransform: 'uppercase',
+  },
+  paperLabel: {
+    alignSelf: 'flex-start',
+    borderRadius: 3,
+    paddingHorizontal: 9,
+    paddingVertical: 5,
+    backgroundColor: 'rgba(231, 216, 185, 0.92)',
+    transform: [{ rotate: '-1deg' }],
+  },
+  paperLabelText: {
+    color: colors.negative,
+    fontFamily: fonts.body,
+    fontSize: 11,
+    fontWeight: '900',
   },
   place: {
     color: colors.text,

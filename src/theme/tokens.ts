@@ -13,6 +13,9 @@ export const colors = {
   yellow: '#F8D84E',
   red: '#F44E5E',
   violet: '#9B8CFF',
+  paper: '#E7D8B9',
+  amber: '#F2A93B',
+  negative: '#1A0F0A',
 } as const;
 
 export const gradients = {
