@@ -8,6 +8,7 @@
     "android": "node scripts/dev.mjs --android",
     "ios": "node scripts/dev.mjs --ios",
     "web": "node scripts/dev.mjs --web",
+    "capture:prototype": "node scripts/capture-prototype.mjs",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

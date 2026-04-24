@@ -43,7 +43,7 @@ export function BottomTabs({ activeTab, onChange }: Props) {
               style={[styles.tab, isCapture && styles.captureTab, active && styles.activeTab]}
             >
               <Icon color={active ? colors.ink : colors.text} size={isCapture ? 25 : 21} strokeWidth={active ? 2.6 : 2} />
-              {!isCapture ? <Text style={[styles.label, active && styles.activeLabel]}>{label}</Text> : null}
+              {active && !isCapture ? <Text style={[styles.label, styles.activeLabel]}>{label}</Text> : null}
             </Pressable>
           );
         })}
@@ -64,7 +64,7 @@ const styles = StyleSheet.create({
   },
   inner: {
     minHeight: 64,
-    paddingHorizontal: 12,
+    paddingHorizontal: 8,
     paddingTop: 9,
     flexDirection: 'row',
     alignItems: 'center',
@@ -72,7 +72,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(5, 7, 13, 0.62)',
   },
   tab: {
-    width: 62,
+    flex: 1,
     minHeight: 48,
     alignItems: 'center',
     justifyContent: 'center',
@@ -83,18 +83,16 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(199, 249, 91, 0.92)',
   },
   captureTab: {
-    width: 54,
-    height: 54,
-    minHeight: 54,
-    borderRadius: 27,
-    backgroundColor: colors.text,
+    minHeight: 48,
+    borderRadius: radius.panel,
+    backgroundColor: 'rgba(245, 247, 242, 0.92)',
     borderColor: 'rgba(57, 217, 242, 0.86)',
     borderWidth: 2,
   },
   label: {
     color: colors.muted,
     fontFamily: fonts.body,
-    fontSize: 11,
+    fontSize: 9,
     fontWeight: '700',
   },
   activeLabel: {

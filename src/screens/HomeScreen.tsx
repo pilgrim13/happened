@@ -11,15 +11,22 @@ import type { FeedMode, MemoryPost } from '../types/happened';
 
 const selectedMode: FeedMode = 'Following';
 
-export function HomeScreen() {
+type HomeScreenProps = {
+  initialIndex?: number;
+};
+
+export function HomeScreen({ initialIndex = 0 }: HomeScreenProps) {
   const { height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
+  const safeInitialIndex = Math.max(0, Math.min(initialIndex, memoryPosts.length - 1));
 
   return (
     <View style={styles.screen}>
       <FlatList
         data={memoryPosts}
         keyExtractor={(item) => item.id}
+        initialScrollIndex={safeInitialIndex}
+        getItemLayout={(_, index) => ({ length: height, offset: height * index, index })}
         pagingEnabled
         snapToInterval={height}
         decelerationRate="fast"
@@ -32,6 +39,7 @@ export function HomeScreen() {
 
 function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number; topInset: number }) {
   const locked = item.unlockState === 'locked';
+  const placeTitle = formatPlaceTitle(item.placeName);
 
   return (
     <View style={[styles.feedItem, { height }]}>
@@ -88,7 +96,7 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
         <View style={styles.paperLabel}>
           <Text style={styles.paperLabelText}>{item.filmStamp}</Text>
         </View>
-        <Text style={styles.place}>{item.placeName}</Text>
+        <Text style={styles.place}>{placeTitle}</Text>
         <View style={styles.placeMetaRow}>
           <Text style={styles.placeMeta}>{item.city}</Text>
           <View style={styles.dot} />
@@ -107,12 +115,21 @@ function FeedItem({ item, height, topInset }: { item: MemoryPost; height: number
           </View>
           <View style={styles.followPill}>
             <UsersRound color={colors.ink} size={14} strokeWidth={2.8} />
-            <Text style={styles.followText}>Following</Text>
           </View>
         </View>
       </View>
     </View>
   );
+}
+
+function formatPlaceTitle(placeName: string) {
+  const words = placeName.split(' ');
+
+  if (words.length <= 2) {
+    return placeName;
+  }
+
+  return `${words.slice(0, -1).join(' ')}\n${words.at(-1)}`;
 }
 
 function FilmFrame({ stamp, placeName }: { stamp: string; placeName: string }) {
@@ -470,8 +487,8 @@ const styles = StyleSheet.create({
   place: {
     color: colors.text,
     fontFamily: fonts.display,
-    fontSize: 36,
-    lineHeight: 40,
+    fontSize: 34,
+    lineHeight: 37,
     fontWeight: '900',
   },
   placeMetaRow: {
@@ -536,16 +553,10 @@ const styles = StyleSheet.create({
     marginLeft: 'auto',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 5,
     borderRadius: radius.pill,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
+    width: 38,
+    height: 32,
+    justifyContent: 'center',
     backgroundColor: colors.lime,
-  },
-  followText: {
-    color: colors.ink,
-    fontFamily: fonts.body,
-    fontSize: 11,
-    fontWeight: '900',
   },
 });
