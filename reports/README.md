@@ -1,31 +1,44 @@
 # Happened Reports
 
-This directory stores owner-facing progress reports.
+이 디렉터리는 GitHub에서 확인할 수 있는 오너 보고서 저장소다.
 
-Each report is append-only and numbered:
+## 폴더 규칙
 
-- `001-project-brief/`
-- `002-home-ui-prototype/`
-- `003-auth-flow/`
+보고 폴더는 날짜와 번호를 함께 쓴다.
 
-## Report Structure
+```text
+YYMMDD-001-project-brief/
+YYMMDD-002-home-ui-prototype/
+YYMMDD-003-auth-flow/
+```
 
-Each report should include:
+예시:
 
-- `report.md`: short Korean progress report.
-- `assets/`: optional screenshots, SVG boards, compressed images, or small videos.
+```text
+260424-001-project-brief/
+```
 
-## GitHub-Friendly Asset Rules
+## 보고서 구조
 
-- Prefer Markdown and SVG for design reports because they stay small and diffable.
-- Prefer compressed PNG/JPEG for screenshots.
-- Keep individual committed assets under 10 MB when possible.
-- Keep normal report folders under 25 MB when possible.
-- Do not commit raw simulator recordings, large videos, generated build files, or app archives.
-- If an artifact is too large, commit a short note in the report and store the artifact elsewhere after approval.
+각 보고서는 다음 구조를 기본으로 한다.
 
-## Current Policy
+```text
+reports/
+  260424-001-project-brief/
+    report.md
+    assets/
+      happened-major-screens.svg
+```
 
-GitHub is suitable as the primary reporting channel once the remote repository is created.
+## GitHub 이미지/파일 기준
 
-I will not create a remote repository, push to GitHub, configure GitHub Actions, or choose any paid storage/distribution path without explicit approval.
+- Markdown과 SVG를 우선 사용한다. GitHub에서 바로 읽기 쉽고 파일이 작다.
+- 스크린샷은 압축 PNG/JPEG로 저장한다.
+- 개별 이미지 파일은 가능하면 10MB 이하로 유지한다.
+- 보고 폴더 하나는 가능하면 25MB 이하로 유지한다.
+- 원본 녹화 영상, 앱 빌드 파일, `.ipa`, `.apk`, `.aab`, 대용량 zip은 커밋하지 않는다.
+- 큰 파일이 필요하면 별도 저장 방식은 승인받고 결정한다.
+
+## 현재 보고
+
+- [Report #1: MVP 기획서와 디자인 프로토타입](260424-001-project-brief/report.md)
