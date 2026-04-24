@@ -1,27 +1,40 @@
 {
   "expo": {
-    "name": "happened",
+    "name": "Happened",
     "slug": "happened",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "dark",
     "newArchEnabled": true,
     "splash": {
       "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
-      "backgroundColor": "#ffffff"
+      "backgroundColor": "#05070D"
     },
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "app.happened.mobile",
+      "infoPlist": {
+        "NSCameraUsageDescription": "Happened uses the camera to capture memories at places you visit.",
+        "NSLocationWhenInUseUsageDescription": "Happened verifies your location when you check in and unlock nearby memories.",
+        "NSPhotoLibraryUsageDescription": "Happened lets you attach photos and videos to memories after a verified check-in."
+      }
     },
     "android": {
+      "package": "app.happened.mobile",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
-        "backgroundColor": "#ffffff"
+        "backgroundColor": "#05070D"
       },
       "edgeToEdgeEnabled": true,
-      "predictiveBackGestureEnabled": false
+      "predictiveBackGestureEnabled": false,
+      "permissions": [
+        "CAMERA",
+        "ACCESS_FINE_LOCATION",
+        "READ_MEDIA_IMAGES",
+        "READ_MEDIA_VIDEO"
+      ]
     },
     "web": {
       "favicon": "./assets/favicon.png"
