@@ -2,6 +2,8 @@ import { mkdir, readFile, stat, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
 
+// TODO(S3 sprint): replace data-URL + local FS storage with presigned PUT to MinIO/S3.
+//                  See server/storage.ts (createObjectStorage / mediaKey).
 import type { ApiConfig } from './config';
 
 type MediaConfig = ApiConfig['media'];

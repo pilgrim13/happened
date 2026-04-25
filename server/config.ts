@@ -1,5 +1,8 @@
 import 'dotenv/config';
 
+import { getStorageConfig, type StorageConfig } from './storage';
+import { getMailerConfig, type MailerConfig } from './mailer';
+
 export type ApiConfig = {
   host: string;
   port: number;
@@ -13,6 +16,8 @@ export type ApiConfig = {
     publicBaseUrl: string | null;
     maxBytes: number;
   };
+  storage: StorageConfig | null;
+  mailer: MailerConfig | null;
 };
 
 function parsePort(value: string | undefined, fallback: number) {
@@ -72,5 +77,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
       publicBaseUrl: env.MEDIA_PUBLIC_BASE_URL?.trim() || null,
       maxBytes: parsePositiveInteger(env.MEDIA_MAX_BYTES, 40 * 1024 * 1024),
     },
+    storage: getStorageConfig(env),
+    mailer: getMailerConfig(env),
   };
 }

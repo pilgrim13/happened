@@ -21,6 +21,7 @@ import {
   placeParamsSchema,
   profileUpdateRequestSchema,
   searchQuerySchema,
+  nearbyQuerySchema,
   userParamsSchema,
 } from './schemas';
 
@@ -293,6 +294,19 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   app.get('/v1/places', async () => ({
     data: await repository.getPlaces(),
   }));
+
+  app.get('/v1/places/nearby', async (request) => {
+    const query = nearbyQuerySchema.parse(request.query);
+
+    return {
+      data: await repository.findNearbyPlaces({
+        latitude: query.lat,
+        longitude: query.lng,
+        radiusMeters: query.radius,
+        limit: query.limit,
+      }),
+    };
+  });
 
   app.get('/v1/places/:placeKey', async (request) => {
     const params = placeParamsSchema.parse(request.params);

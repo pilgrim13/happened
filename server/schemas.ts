@@ -68,6 +68,13 @@ export const memoryCreateRequestSchema = z.object({
   message: 'At least one photo is required.',
 });
 
+export const nearbyQuerySchema = z.object({
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+  radius: z.coerce.number().positive().max(100_000).optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+
 export const memoryUpdateRequestSchema = z
   .object({
     caption: z.string().trim().min(1).max(500).optional(),

@@ -308,6 +308,9 @@ function withViewerState(post: MemoryPost, actions: Array<{ postId: string; acti
   };
 }
 
+// In-memory haversine. Used only by the local-JSON repository fallback.
+// In Postgres mode, distance is computed by PostGIS (ST_Distance / ST_DWithin).
+// @deprecated for postgres paths — keep for local dev only.
 function distanceMeters(a: UserLocation, b: { latitude: number; longitude: number }) {
   const earthRadiusMeters = 6_371_000;
   const toRadians = (value: number) => (value * Math.PI) / 180;
@@ -1272,6 +1275,23 @@ function createLocalRepository(store = new LocalStore()) {
     return getNotifications(sessionToken);
   }
 
+  function findNearbyPlaces({ latitude, longitude, radiusMeters = 5000, limit = 20 }: { latitude: number; longitude: number; radiusMeters?: number; limit?: number; }) {
+    const origin: UserLocation = { latitude, longitude };
+    return store.data.places
+      .filter((place) => place.coordinates)
+      .map((place) => ({
+        place,
+        distance: distanceMeters(origin, { latitude: place.coordinates!.latitude, longitude: place.coordinates!.longitude }),
+      }))
+      .filter((entry) => entry.distance <= radiusMeters)
+      .sort((a, b) => a.distance - b.distance)
+      .slice(0, limit)
+      .map((entry) => ({
+        ...entry.place,
+        distanceMeters: entry.distance,
+      }));
+  }
+
   return {
     registerUser,
     loginUser,
@@ -1296,6 +1316,7 @@ function createLocalRepository(store = new LocalStore()) {
     getTimeline,
     issueCheckIn,
     createMemory,
+    findNearbyPlaces,
   };
 }
 
@@ -1997,7 +2018,17 @@ function createPostgresRepository(databaseUrl: string) {
     let currentDistance = suppliedDistance ?? 0;
 
     if (location && place.place.coordinates && process.env.HAPPENED_DEV_LOCATION_OVERRIDE === '0') {
-      currentDistance = distanceMeters(location, place.place.coordinates);
+      // PostGIS-backed distance: ST_Distance(geography, geography) returns meters.
+      const distRes = await queryDatabase<{ d: string | number | null }>(
+        databaseUrl,
+        `select ST_Distance(
+            ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+            ST_SetSRID(ST_MakePoint($3, $4), 4326)::geography
+         )::int as d`,
+        [location.longitude, location.latitude, place.place.coordinates.longitude, place.place.coordinates.latitude],
+      );
+      const raw = distRes.rows[0]?.d ?? 0;
+      currentDistance = typeof raw === 'string' ? Number.parseInt(raw, 10) : Number(raw);
     }
 
     if (location?.accuracyMeters && location.accuracyMeters > 50 && process.env.HAPPENED_DEV_LOCATION_OVERRIDE === '0') {
@@ -2702,6 +2733,26 @@ function createPostgresRepository(databaseUrl: string) {
     return getNotifications(sessionToken);
   }
 
+  // PostGIS-backed nearby search. Uses ST_DWithin (uses GIST index) for filtering
+  // and KNN (`<->`) for distance ordering. radiusMeters defaults to 5km.
+  async function findNearbyPlaces({ latitude, longitude, radiusMeters = 5000, limit = 20 }: { latitude: number; longitude: number; radiusMeters?: number; limit?: number; }) {
+    const result = await queryDatabase<DbPlaceRow & { distance_meters: string | number | null }>(
+      databaseUrl,
+      `select p.*,
+              ST_Distance(p.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography)::int as distance_meters
+         from places p
+        where p.geom is not null
+          and ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
+        order by p.geom <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+        limit $4`,
+      [longitude, latitude, radiusMeters, limit],
+    );
+    return result.rows.map((row) => ({
+      ...rowToPlace(row),
+      distanceMeters: typeof row.distance_meters === 'string' ? Number.parseInt(row.distance_meters, 10) : Number(row.distance_meters ?? 0),
+    }));
+  }
+
   return {
     registerUser,
     loginUser,
@@ -2726,6 +2777,7 @@ function createPostgresRepository(databaseUrl: string) {
     getTimeline,
     issueCheckIn,
     createMemory,
+    findNearbyPlaces,
   };
 }
 

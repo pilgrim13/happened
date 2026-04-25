@@ -92,6 +92,7 @@ export async function migrateDatabase(databaseUrl: string | null) {
     '005_notification_reads.sql',
     '006_user_profile_fields.sql',
     '007_memory_post_media_urls.sql',
+    '008_postgis.sql',
   ];
   let applied = 0;
 

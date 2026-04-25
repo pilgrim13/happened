@@ -12,6 +12,8 @@
     "api:dev": "tsx watch server/index.ts",
     "db:up": "docker compose -f docker-compose.dev.yml up -d",
     "db:migrate": "tsx server/migrate.ts",
+    "db:reset": "echo 'Use docker compose -f docker-compose.dev.yml down -v to wipe volumes (DESTRUCTIVE)'",
+    "test:server": "tsx server/__tests__/parity.test.ts",
     "test:local": "node scripts/test-local.mjs",
     "test:iphone": "node scripts/test-local.mjs --native",
     "test:public": "node scripts/test-public.mjs",
@@ -22,6 +24,8 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1037.0",
+    "@aws-sdk/s3-request-presigner": "^3.1037.0",
     "@expo/metro-runtime": "~55.0.10",
     "@fastify/cors": "^11.2.0",
     "@react-native-async-storage/async-storage": "2.2.0",
@@ -44,6 +48,7 @@
     "expo-web-browser": "~55.0.14",
     "fastify": "^5.8.5",
     "lucide-react-native": "^1.9.0",
+    "nodemailer": "^6.10.1",
     "pg": "^8.20.0",
     "react": "19.2.0",
     "react-dom": "19.2.0",
@@ -57,6 +62,7 @@
   },
   "devDependencies": {
     "@types/node": "^25.6.0",
+    "@types/nodemailer": "^8.0.0",
     "@types/pg": "^8.20.0",
     "@types/react": "~19.2.10",
     "tsx": "^4.21.0",

@@ -8,7 +8,7 @@ Happened is a location-locked memory app: moments left at a place reopen when pe
 - TypeScript
 - React Navigation (native-stack + bottom-tabs) with deep-linking (`happened://`, `https://happened.app`)
 - Session persistence via `expo-secure-store` (native) + `localStorage` (web)
-- Local Postgres-backed Fastify API for development
+- Local **PostGIS** + **MinIO** + **MailHog**-backed Fastify API for development
 - Local JSON repository fallback only when `DATABASE_URL` is unset
 - Custom React Native UI without paid map, auth, analytics, or hosting dependencies
 - Port-safe local Expo launcher in `scripts/dev.mjs`
@@ -74,7 +74,7 @@ npm run typecheck
 
 The dev script starts from port `8097` and automatically moves to the next open port to reduce conflicts with other projects on this Mac mini.
 
-The API script starts a local Fastify server on `http://127.0.0.1:4017` by default. Development uses Docker Postgres on host port `5433` via `.env`. Without `DATABASE_URL`, the API falls back to a local JSON repository seeded from the app mock data.
+The API script starts a local Fastify server on `http://127.0.0.1:4017` by default. Development uses Docker **PostGIS** on host port `5433` via `.env`. The dev compose also brings up **MinIO** (S3-compatible, console at <http://localhost:9001>) and **MailHog** (SMTP `:1025`, UI <http://localhost:8025>) for parity with production object-storage and email infra. Without `DATABASE_URL`, the API falls back to a local JSON repository seeded from the app mock data.
 
 Default development login:
 

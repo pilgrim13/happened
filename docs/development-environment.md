@@ -8,9 +8,11 @@ The first target is not a throwaway demo. The local environment should let frien
 
 - One command can expose the app to a phone through Tailscale Funnel, and the current fixed friend-test URL is served through ngrok.
 - The web app and API share one HTTPS URL.
-- Development data persists in Docker Postgres (`happened-postgres`) on host port `5433`.
+- Development data persists in Docker **PostGIS** (`happened-postgres`, image `postgis/postgis:16-3.4`) on host port `5433`. Radius queries use `ST_DWithin` and KNN ordering on a GIST index.
 - Local JSON persistence remains as a fallback only when `DATABASE_URL` is unset.
-- Uploaded images persist through the local media storage provider in `.local/uploads/`.
+- Uploaded images persist through the local media storage provider in `.local/uploads/` (deprecated; superseded by S3 client in S3 sprint).
+- **MinIO** (S3-compatible, ports `9000` API / `9001` console) ships in the dev compose. Bucket `happened-media-dev` is auto-created with a public-read policy on the `public/*` prefix.
+- **MailHog** (ports `1025` SMTP / `8025` UI) runs alongside Postgres for local email testing. Server reads `SMTP_*` env to talk to it.
 - Auth, check-in tokens, memory posts, places, timeline, profiles, follows, blocks, search, notifications, and media are all API-backed.
 - Postgres schema, migrations, seed data, auth, feed, viewer-specific feed actions, check-ins, and memory creation are wired into the development API path.
 - Map uses real OpenStreetMap raster tiles, Web Mercator projection, current GPS location, draggable pan, zoom controls, place markers, and GPS-based distance state.
@@ -38,7 +40,17 @@ npm run db:up
 npm run db:migrate
 ```
 
-Starts local Postgres and applies schema migrations when `DATABASE_URL` is configured.
+Starts local **PostGIS** + **MinIO** + **MailHog** and applies schema migrations when `DATABASE_URL` is configured.
+Convenience URLs after `db:up`:
+
+- MinIO console: <http://localhost:9001> (default credentials `minioadmin` / `minioadmin`).
+- MailHog UI: <http://localhost:8025>.
+
+To wipe ALL dev data (postgres + minio volumes), run the explicit DESTRUCTIVE command:
+`docker compose -f docker-compose.dev.yml down -v`. There is no shortcut script — the wipe is intentional.
+
+To roll back the PostGIS migration manually:
+`psql "$DATABASE_URL" -f server/migrations/008_postgis.down.sql && psql "$DATABASE_URL" -c "delete from schema_migrations where id='008_postgis.sql';"`
 
 ```bash
 npm run qa:public
