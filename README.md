@@ -4,12 +4,30 @@ Happened is a location-locked memory app: moments left at a place reopen when pe
 
 ## Current Stack
 
-- Expo React Native
+- Expo SDK 55 + React Native 0.83 + React 19
 - TypeScript
+- React Navigation (native-stack + bottom-tabs) with deep-linking (`happened://`, `https://happened.app`)
+- Session persistence via `expo-secure-store` (native) + `localStorage` (web)
 - Local Postgres-backed Fastify API for development
 - Local JSON repository fallback only when `DATABASE_URL` is unset
 - Custom React Native UI without paid map, auth, analytics, or hosting dependencies
 - Port-safe local Expo launcher in `scripts/dev.mjs`
+
+## Source Layout
+
+```
+App.tsx                   # Provider assembly only (<50 lines)
+src/
+  navigation/             # RootNavigator, AuthStack, MainTabs, route wrappers, linking config
+  contexts/               # SessionContext, AppDataContext, NoticeContext, CaptureContext
+  hooks/                  # useCaptureFlow, useSharePost, useWebViewportShell, ...
+  storage/                # secureSession (SecureStore + localStorage fallback)
+  screens/                # Screen components (presentational; receive props from route wrappers)
+  components/             # BottomTabs (custom tab bar), NoticeOverlay, ...
+  services/               # API client, location helpers
+  theme/, i18n/, types/, data/
+server/                   # Fastify API
+```
 
 ## MVP Focus
 
