@@ -28,7 +28,7 @@ export function StatusPill({ state, distanceMeters, radiusMeters }: Props) {
   return (
     <LinearGradient colors={gradient} start={{ x: 0, y: 0 }} end={{ x: 1, y: 0 }} style={styles.shell}>
       <View style={styles.inner}>
-        <Icon color={colors.ink} size={15} strokeWidth={2.8} />
+        <Icon color={colors.setlogInk} size={15} strokeWidth={2.8} />
         <Text style={styles.label}>{label}</Text>
         <Text style={styles.meta}>
           {distanceLabel(distanceMeters)} / {radiusMeters}m
@@ -53,13 +53,13 @@ const styles = StyleSheet.create({
     paddingVertical: 7,
   },
   label: {
-    color: colors.ink,
+    color: colors.setlogInk,
     fontFamily: fonts.body,
     fontSize: 12,
     fontWeight: '900',
   },
   meta: {
-    color: 'rgba(5, 7, 13, 0.72)',
+    color: colors.setlogMuted,
     fontFamily: fonts.body,
     fontSize: 12,
     fontWeight: '800',

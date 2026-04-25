@@ -1,23 +1,23 @@
-import { BlurView } from 'expo-blur';
 import { Camera, Clock3, Home, Map, UserRound } from 'lucide-react-native';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { colors, fonts, radius } from '../theme/tokens';
+import { useI18n } from '../i18n';
+import { colors, fonts } from '../theme/tokens';
 import type { TabKey } from '../types/happened';
 
 type TabItem = {
   key: TabKey;
-  label: string;
+  labelKey: 'tabs.home' | 'tabs.map' | 'tabs.capture' | 'tabs.timeline' | 'tabs.profile';
   Icon: typeof Home;
 };
 
 const tabs: TabItem[] = [
-  { key: 'home', label: 'Home', Icon: Home },
-  { key: 'map', label: 'Map', Icon: Map },
-  { key: 'capture', label: 'Capture', Icon: Camera },
-  { key: 'timeline', label: 'Timeline', Icon: Clock3 },
-  { key: 'profile', label: 'Profile', Icon: UserRound },
+  { key: 'home', labelKey: 'tabs.home', Icon: Home },
+  { key: 'map', labelKey: 'tabs.map', Icon: Map },
+  { key: 'capture', labelKey: 'tabs.capture', Icon: Camera },
+  { key: 'timeline', labelKey: 'tabs.timeline', Icon: Clock3 },
+  { key: 'profile', labelKey: 'tabs.profile', Icon: UserRound },
 ];
 
 type Props = {
@@ -27,11 +27,12 @@ type Props = {
 
 export function BottomTabs({ activeTab, onChange }: Props) {
   const insets = useSafeAreaInsets();
+  const { t } = useI18n();
 
   return (
-    <BlurView intensity={38} tint="dark" style={[styles.wrap, { paddingBottom: Math.max(insets.bottom, 10) }]}>
+    <View testID="bottom-tabs" style={[styles.wrap, { paddingBottom: insets.bottom }]}>
       <View style={styles.inner}>
-        {tabs.map(({ key, label, Icon }) => {
+        {tabs.map(({ key, labelKey, Icon }) => {
           const active = activeTab === key;
           const isCapture = key === 'capture';
           return (
@@ -40,15 +41,15 @@ export function BottomTabs({ activeTab, onChange }: Props) {
               accessibilityState={{ selected: active }}
               key={key}
               onPress={() => onChange(key)}
-              style={[styles.tab, isCapture && styles.captureTab, active && styles.activeTab]}
+              style={[styles.tab, active && styles.activeTab, isCapture && styles.captureTab, isCapture && active && styles.captureTabActive]}
             >
-              <Icon color={active ? colors.ink : colors.text} size={isCapture ? 25 : 21} strokeWidth={active ? 2.6 : 2} />
-              {active && !isCapture ? <Text style={[styles.label, styles.activeLabel]}>{label}</Text> : null}
+              <Icon color={colors.setlogInk} size={isCapture ? 24 : 21} strokeWidth={active ? 2.7 : 2.1} />
+              <Text numberOfLines={1} style={[styles.label, active && styles.activeLabel]}>{t(labelKey)}</Text>
             </Pressable>
           );
         })}
       </View>
-    </BlurView>
+    </View>
   );
 }
 
@@ -58,44 +59,59 @@ const styles = StyleSheet.create({
     left: 0,
     right: 0,
     bottom: 0,
-    borderTopColor: colors.line,
+    alignItems: 'center',
+    backgroundColor: colors.setlogPaper,
+    borderTopColor: colors.setlogLine,
     borderTopWidth: 1,
     overflow: 'hidden',
+    zIndex: 20,
   },
   inner: {
-    minHeight: 64,
-    paddingHorizontal: 8,
-    paddingTop: 9,
+    width: '100%',
+    maxWidth: 560,
+    minHeight: 62,
+    paddingHorizontal: 0,
+    paddingTop: 4,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    backgroundColor: 'rgba(5, 7, 13, 0.62)',
+    backgroundColor: colors.setlogPaper,
   },
   tab: {
-    flex: 1,
-    minHeight: 48,
+    width: '20%',
+    flexGrow: 0,
+    flexShrink: 0,
+    minWidth: 0,
+    minHeight: 58,
     alignItems: 'center',
     justifyContent: 'center',
-    gap: 4,
-    borderRadius: radius.panel,
+    gap: 3,
+    borderTopColor: 'transparent',
+    borderTopWidth: 3,
   },
   activeTab: {
-    backgroundColor: 'rgba(199, 249, 91, 0.92)',
+    borderTopColor: colors.setlogInk,
+    backgroundColor: 'rgba(23, 18, 15, 0.04)',
   },
   captureTab: {
-    minHeight: 48,
-    borderRadius: radius.panel,
-    backgroundColor: 'rgba(245, 247, 242, 0.92)',
-    borderColor: 'rgba(57, 217, 242, 0.86)',
-    borderWidth: 2,
+    borderLeftColor: colors.setlogLine,
+    borderLeftWidth: 1,
+    borderRightColor: colors.setlogLine,
+    borderRightWidth: 1,
+    backgroundColor: 'rgba(255, 183, 200, 0.12)',
+  },
+  captureTabActive: {
+    borderTopColor: colors.setlogPink,
+    backgroundColor: 'rgba(255, 183, 200, 0.22)',
   },
   label: {
-    color: colors.muted,
+    color: colors.setlogMuted,
     fontFamily: fonts.body,
-    fontSize: 9,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '800',
   },
   activeLabel: {
-    color: colors.ink,
+    color: colors.setlogInk,
+    fontWeight: '900',
   },
 });

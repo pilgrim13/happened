@@ -16,13 +16,24 @@ export const colors = {
   paper: '#E7D8B9',
   amber: '#F2A93B',
   negative: '#1A0F0A',
+  setlogBg: '#FFF8EF',
+  setlogPaper: '#FFFEF8',
+  setlogInk: '#17120F',
+  setlogMuted: '#746B62',
+  setlogFaint: '#ADA49A',
+  setlogLine: 'rgba(23, 18, 15, 0.14)',
+  setlogPink: '#FFB7C8',
+  setlogLavender: '#BDA8FF',
+  setlogMint: '#87F0B6',
+  setlogBlue: '#B9D8FF',
+  setlogYellow: '#FFE893',
 } as const;
 
 export const gradients = {
   app: ['#05070D', '#071218', '#0C1116'] as const,
-  unlocked: ['rgba(57, 217, 242, 0.95)', 'rgba(199, 249, 91, 0.95)'] as const,
-  locked: ['rgba(255, 111, 97, 0.95)', 'rgba(248, 216, 78, 0.95)'] as const,
-  heat: ['#39D9F2', '#C7F95B', '#F8D84E', '#FF6F61'] as const,
+  unlocked: ['rgba(185, 216, 255, 0.95)', 'rgba(135, 240, 182, 0.95)'] as const,
+  locked: ['rgba(255, 183, 200, 0.95)', 'rgba(255, 232, 147, 0.95)'] as const,
+  heat: ['#B9D8FF', '#87F0B6', '#FFE893', '#FFB7C8'] as const,
 } as const;
 
 export const radius = {

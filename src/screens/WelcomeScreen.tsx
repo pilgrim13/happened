@@ -1,66 +1,114 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, MapPin, Sparkles } from 'lucide-react-native';
-import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import { Camera, Heart, Lock, MapPin, MessageCircle } from 'lucide-react-native';
+import { Image, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { seedMediaUrls } from '../data/happened';
+import { useI18n } from '../i18n';
 import { colors, fonts, radius } from '../theme/tokens';
 
 type Props = {
   onCreateAccount: () => void;
-  onSkipToApp: () => void;
+  onLogIn: () => void;
 };
 
-export function WelcomeScreen({ onCreateAccount, onSkipToApp }: Props) {
+export function WelcomeScreen({ onCreateAccount, onLogIn }: Props) {
   const insets = useSafeAreaInsets();
+  const { t, toggleLanguage } = useI18n();
+  const { width } = useWindowDimensions();
+  const compactLayout = width < 720;
+  const frameWidth = compactLayout ? Math.max(280, Math.min(width - 32, 358)) : 390;
 
   return (
-    <LinearGradient colors={['#05070D', '#12110D', '#091916']} style={styles.screen}>
-      <View style={[styles.content, { paddingTop: insets.top + 28, paddingBottom: insets.bottom + 24 }]}>
-        <View>
-          <Text style={styles.brand}>Happened</Text>
-          <Text style={styles.kicker}>Location-locked memories</Text>
-        </View>
-
-        <View style={styles.heroFrame}>
-          <View style={styles.filmRail}>
-            {Array.from({ length: 9 }).map((_, index) => (
-              <View key={index} style={styles.filmHole} />
-            ))}
+    <LinearGradient colors={[colors.setlogBg, '#FFF2F5', '#F8F7FF']} style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={[
+          styles.content,
+          compactLayout ? styles.contentMobile : styles.contentCentered,
+          { paddingTop: insets.top + 24, paddingBottom: Math.max(insets.bottom + 24, 28) },
+        ]}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={[styles.header, { width: frameWidth }]}>
+          <Pressable style={styles.languageButton} onPress={toggleLanguage}>
+            <Text style={styles.languageText}>{t('language.switchTo')}</Text>
+          </Pressable>
+          <View style={styles.logoMark}>
+            <MapPin color={colors.setlogInk} size={20} strokeWidth={3} />
           </View>
-          <LinearGradient colors={['#2B2118', '#355D63', '#1A0F0A']} style={styles.heroImage}>
-            <View style={styles.paperLabel}>
-              <Text style={styles.paperText}>APR 2023 / ISO 400</Text>
+          <Text style={styles.brand}>Happened</Text>
+          <Text style={styles.subtitle}>{t('welcome.subtitle')}</Text>
+        </View>
+
+        <View style={[styles.previewStack, { width: frameWidth }]}>
+          <View style={styles.postCard}>
+            <View style={styles.postHeader}>
+              <View style={styles.avatar}>
+                <Text style={styles.avatarText}>M</Text>
+              </View>
+              <View style={styles.postHeaderCopy}>
+                <Text style={styles.name}>Mina</Text>
+                <Text style={styles.meta}>{t('welcome.meta')}</Text>
+              </View>
+              <View style={styles.openBadge}>
+                <Text style={styles.openBadgeText}>{t('common.open')}</Text>
+              </View>
             </View>
-            <Sparkles color={colors.paper} size={32} />
-            <Text style={styles.heroTitle}>여기서 남긴 순간은 여기서 다시 열린다</Text>
-          </LinearGradient>
+
+            <View style={styles.photoPreview}>
+              <Image source={{ uri: seedMediaUrls['seolleung-cafe-2023'] }} resizeMode="cover" style={styles.photoImage} />
+              <LinearGradient colors={['rgba(0,0,0,0.06)', 'rgba(0,0,0,0.58)']} style={StyleSheet.absoluteFill} />
+              <View style={styles.lockPill}>
+                <Lock color={colors.setlogPaper} size={14} strokeWidth={2.6} />
+                <Text style={styles.lockPillText}>{t('welcome.placeBased')}</Text>
+              </View>
+              <Text style={styles.photoTitle}>{t('welcome.previewTitle')}</Text>
+            </View>
+
+            <View style={styles.actionRow}>
+              <View style={styles.actionItem}>
+                <Heart color={colors.setlogInk} size={19} />
+                <Text style={styles.actionText}>128</Text>
+              </View>
+              <View style={styles.actionItem}>
+                <MessageCircle color={colors.setlogInk} size={19} />
+                <Text style={styles.actionText}>24</Text>
+              </View>
+              <View style={styles.actionItem}>
+                <Camera color={colors.setlogInk} size={19} />
+                <Text style={styles.actionText}>{t('welcome.checkIn')}</Text>
+              </View>
+            </View>
+          </View>
         </View>
 
-        <View style={styles.principles}>
-          <Principle icon={<MapPin color={colors.lime} size={19} />} text="장소 근처에서만 완전 열람" />
-          <Principle icon={<Camera color={colors.cyan} size={19} />} text="현장 체크인 후 12시간 업로드" />
-          <Principle icon={<Sparkles color={colors.coral} size={19} />} text="다시 방문하면 예전 기억 회상" />
-        </View>
-
-        <View style={styles.actions}>
+        <View style={[styles.actions, { width: frameWidth }]}>
           <Pressable style={styles.primaryButton} onPress={onCreateAccount}>
-            <Text style={styles.primaryText}>Start with mock account</Text>
+            <Text style={styles.primaryText}>{t('welcome.create')}</Text>
           </Pressable>
-          <Pressable style={styles.secondaryButton} onPress={onSkipToApp}>
-            <Text style={styles.secondaryText}>Explore prototype</Text>
+          <Pressable style={styles.secondaryButton} onPress={onLogIn}>
+            <Text style={styles.secondaryText}>{t('welcome.login')}</Text>
           </Pressable>
         </View>
-      </View>
+
+        <View style={[styles.benefits, { width: frameWidth }]}>
+          <Benefit title={t('welcome.benefit1Title')} text={t('welcome.benefit1Text')} />
+          <Benefit title={t('welcome.benefit2Title')} text={t('welcome.benefit2Text')} />
+          <Benefit title={t('welcome.benefit3Title')} text={t('welcome.benefit3Text')} />
+        </View>
+      </ScrollView>
     </LinearGradient>
   );
 }
 
-function Principle({ icon, text }: { icon: ReactNode; text: string }) {
+function Benefit({ title, text }: { title: string; text: string }) {
   return (
-    <View style={styles.principle}>
-      <View style={styles.principleIcon}>{icon}</View>
-      <Text style={styles.principleText}>{text}</Text>
+    <View style={styles.benefit}>
+      <View style={styles.benefitDot} />
+      <View style={styles.benefitCopy}>
+        <Text style={styles.benefitTitle}>{title}</Text>
+        <Text style={styles.benefitText}>{text}</Text>
+      </View>
     </View>
   );
 }
@@ -70,135 +118,255 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
-    paddingHorizontal: 20,
-    justifyContent: 'space-between',
+    flexGrow: 1,
+  },
+  contentMobile: {
+    alignItems: 'flex-start',
+    paddingHorizontal: 16,
+  },
+  contentCentered: {
+    alignItems: 'center',
+    paddingHorizontal: 0,
+  },
+  header: {
+    width: '92%',
+    maxWidth: 390,
+    alignItems: 'center',
+  },
+  languageButton: {
+    alignSelf: 'flex-end',
+    minHeight: 32,
+    borderRadius: radius.pill,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 11,
+    marginBottom: 8,
+    backgroundColor: colors.setlogPaper,
+  },
+  languageText: {
+    color: colors.setlogInk,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  logoMark: {
+    width: 44,
+    height: 44,
+    borderRadius: 14,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.setlogYellow,
+    marginBottom: 10,
   },
   brand: {
-    color: colors.text,
+    color: colors.setlogInk,
     fontFamily: fonts.display,
-    fontSize: 42,
+    fontSize: 40,
     fontWeight: '900',
   },
-  kicker: {
-    color: colors.muted,
+  subtitle: {
+    color: colors.setlogMuted,
     fontFamily: fonts.body,
     fontSize: 14,
-    fontWeight: '800',
-    marginTop: 4,
+    lineHeight: 20,
+    fontWeight: '700',
+    textAlign: 'center',
+    marginTop: 8,
+    width: '100%',
+    maxWidth: 305,
   },
-  heroFrame: {
-    minHeight: 340,
-    borderRadius: radius.panel,
-    borderColor: 'rgba(231, 216, 185, 0.34)',
-    borderWidth: 2,
+  previewStack: {
+    width: '92%',
+    maxWidth: 390,
+    marginTop: 15,
+  },
+  postCard: {
+    borderRadius: 28,
     overflow: 'hidden',
-    backgroundColor: colors.negative,
-  },
-  filmRail: {
-    position: 'absolute',
-    left: 0,
-    top: 0,
-    bottom: 0,
-    width: 34,
-    alignItems: 'center',
-    justifyContent: 'space-around',
-    backgroundColor: 'rgba(26, 15, 10, 0.84)',
-    zIndex: 2,
-  },
-  filmHole: {
-    width: 12,
-    height: 26,
-    borderRadius: 4,
-    backgroundColor: colors.paper,
-    opacity: 0.76,
-  },
-  heroImage: {
-    flex: 1,
-    marginLeft: 34,
-    padding: 22,
-    justifyContent: 'flex-end',
-    gap: 14,
-  },
-  paperLabel: {
-    position: 'absolute',
-    top: 22,
-    right: 20,
-    borderRadius: 3,
-    paddingHorizontal: 10,
-    paddingVertical: 6,
-    backgroundColor: colors.paper,
-    transform: [{ rotate: '1deg' }],
-  },
-  paperText: {
-    color: colors.negative,
-    fontFamily: fonts.body,
-    fontSize: 11,
-    fontWeight: '900',
-  },
-  heroTitle: {
-    color: colors.text,
-    fontFamily: fonts.display,
-    fontSize: 30,
-    lineHeight: 36,
-    fontWeight: '900',
-  },
-  principles: {
-    gap: 10,
-  },
-  principle: {
-    minHeight: 54,
-    borderRadius: radius.panel,
-    borderColor: colors.line,
+    backgroundColor: colors.setlogPaper,
+    borderColor: colors.setlogLine,
     borderWidth: 1,
-    backgroundColor: colors.panel,
+  },
+  postHeader: {
+    minHeight: 60,
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 13,
+    paddingHorizontal: 12,
   },
-  principleIcon: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  avatar: {
+    width: 42,
+    height: 42,
+    borderRadius: 21,
+    backgroundColor: colors.setlogBlue,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: 'rgba(245, 247, 242, 0.08)',
     marginRight: 10,
   },
-  principleText: {
-    color: colors.text,
+  avatarText: {
+    color: colors.setlogInk,
+    fontFamily: fonts.display,
+    fontSize: 17,
+    fontWeight: '900',
+  },
+  postHeaderCopy: {
+    flex: 1,
+    minWidth: 0,
+  },
+  name: {
+    color: colors.setlogInk,
     fontFamily: fonts.body,
-    fontSize: 14,
-    fontWeight: '800',
+    fontSize: 15,
+    fontWeight: '900',
   },
-  actions: {
-    gap: 10,
+  meta: {
+    color: colors.setlogMuted,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 3,
   },
-  primaryButton: {
-    height: 56,
-    borderRadius: radius.panel,
+  openBadge: {
+    minHeight: 28,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: colors.lime,
+    backgroundColor: 'rgba(135, 240, 182, 0.24)',
+  },
+  openBadgeText: {
+    color: colors.setlogInk,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  photoPreview: {
+    height: 204,
+    overflow: 'hidden',
+    justifyContent: 'space-between',
+    padding: 14,
+  },
+  photoImage: {
+    ...StyleSheet.absoluteFillObject,
+  },
+  lockPill: {
+    alignSelf: 'flex-start',
+    minHeight: 34,
+    borderRadius: radius.pill,
+    paddingHorizontal: 10,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    backgroundColor: 'rgba(7,8,11,0.62)',
+  },
+  lockPillText: {
+    color: colors.setlogPaper,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '900',
+  },
+  photoTitle: {
+    color: colors.setlogPaper,
+    fontFamily: fonts.display,
+    fontSize: 28,
+    lineHeight: 32,
+    fontWeight: '900',
+    maxWidth: 285,
+  },
+  actionRow: {
+    minHeight: 52,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 18,
+    paddingHorizontal: 13,
+  },
+  actionItem: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  actionText: {
+    color: colors.setlogInk,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  benefits: {
+    width: '92%',
+    maxWidth: 390,
+    gap: 10,
+    marginTop: 14,
+  },
+  benefit: {
+    minHeight: 62,
+    borderRadius: 18,
+    backgroundColor: colors.setlogPaper,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 12,
+  },
+  benefitDot: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: colors.setlogMint,
+    marginRight: 11,
+  },
+  benefitCopy: {
+    flex: 1,
+  },
+  benefitTitle: {
+    color: colors.setlogInk,
+    fontFamily: fonts.body,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  benefitText: {
+    color: colors.setlogMuted,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    lineHeight: 17,
+    fontWeight: '700',
+    marginTop: 2,
+  },
+  actions: {
+    width: '92%',
+    maxWidth: 390,
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 12,
+  },
+  primaryButton: {
+    flex: 1.35,
+    height: 54,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.setlogInk,
   },
   primaryText: {
-    color: colors.ink,
+    color: colors.setlogPaper,
     fontFamily: fonts.body,
     fontSize: 16,
     fontWeight: '900',
   },
   secondaryButton: {
-    height: 52,
-    borderRadius: radius.panel,
+    flex: 0.85,
+    height: 54,
+    borderRadius: 18,
     alignItems: 'center',
     justifyContent: 'center',
-    borderColor: colors.line,
+    borderColor: colors.setlogLine,
     borderWidth: 1,
+    backgroundColor: colors.setlogPaper,
   },
   secondaryText: {
-    color: colors.text,
+    color: colors.setlogInk,
     fontFamily: fonts.body,
-    fontSize: 14,
+    fontSize: 15,
     fontWeight: '900',
   },
 });

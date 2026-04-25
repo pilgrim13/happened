@@ -1,68 +1,203 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Apple, Mail } from 'lucide-react-native';
-import { Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { LogIn, Sparkles } from 'lucide-react-native';
+import { useState } from 'react';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { translateServerMessage, useI18n } from '../i18n';
+import { loginAccount, registerAccount } from '../services/happenedApi';
 import { colors, fonts, radius } from '../theme/tokens';
+import type { AuthSession } from '../types/happened';
 
 type Props = {
-  onComplete: () => void;
+  initialMode?: 'register' | 'login';
+  onComplete: (session: AuthSession) => void;
   onBack: () => void;
 };
 
-export function AuthScreen({ onComplete, onBack }: Props) {
+const DEFAULT_TEST_EMAIL = 'test@happened.dev';
+const DEFAULT_TEST_PASSWORD = 'happened-test-1';
+const LAST_EMAIL_KEY = 'happened-last-email';
+
+function createDefaultAccountSeed() {
+  const suffix = Date.now().toString().slice(-5);
+
+  return {
+    email: `friend${suffix}@happened.test`,
+    displayName: 'Friend',
+    handle: `friend${suffix}`,
+    password: DEFAULT_TEST_PASSWORD,
+  };
+}
+
+function readLastEmail() {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return null;
+  }
+
+  return window.localStorage.getItem(LAST_EMAIL_KEY);
+}
+
+function rememberEmail(email: string) {
+  if (Platform.OS !== 'web' || typeof window === 'undefined') {
+    return;
+  }
+
+  window.localStorage.setItem(LAST_EMAIL_KEY, email);
+}
+
+function getDefaultLoginInput() {
+  const lastEmail = readLastEmail();
+  const loginEmail = lastEmail ?? DEFAULT_TEST_EMAIL;
+
+  return {
+    email: loginEmail,
+    password: loginEmail === DEFAULT_TEST_EMAIL ? DEFAULT_TEST_PASSWORD : '',
+  };
+}
+
+export function AuthScreen({ initialMode = 'register', onComplete, onBack }: Props) {
   const insets = useSafeAreaInsets();
+  const { language, t } = useI18n();
+  const defaultAccount = createDefaultAccountSeed();
+  const defaultLogin = getDefaultLoginInput();
+  const [mode, setMode] = useState<'register' | 'login'>(initialMode);
+  const [email, setEmail] = useState(() => (initialMode === 'login' ? defaultLogin.email : defaultAccount.email));
+  const [displayName, setDisplayName] = useState(defaultAccount.displayName);
+  const [handle, setHandle] = useState(defaultAccount.handle);
+  const [password, setPassword] = useState(initialMode === 'login' ? defaultLogin.password : defaultAccount.password);
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  const submit = async (
+    mode: 'register' | 'login',
+    input = {
+      email,
+      displayName,
+      handle,
+      password,
+    },
+  ) => {
+    setBusy(true);
+    setError(null);
+
+    try {
+      const session =
+        mode === 'register'
+          ? await registerAccount(input)
+          : await loginAccount({ email: input.email, password: input.password });
+
+      rememberEmail(input.email);
+      onComplete(session);
+    } catch (nextError) {
+      const message = nextError instanceof Error ? nextError.message : t('auth.failed');
+      if (message.includes('incorrect')) {
+        setError(t('auth.incorrect'));
+      } else if (message.includes('already')) {
+        setError(t('auth.already'));
+      } else {
+        setError(translateServerMessage(message, language));
+      }
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const createQuickAccount = () => {
+    const suffix = Date.now().toString().slice(-6);
+    const input = {
+      email: `friend${suffix}@happened.test`,
+      displayName: `Friend ${suffix.slice(-3)}`,
+      handle: `friend${suffix}`,
+      password: DEFAULT_TEST_PASSWORD,
+    };
+
+    setEmail(input.email);
+    setDisplayName(input.displayName);
+    setHandle(input.handle);
+    setPassword(input.password);
+    void submit('register', input);
+  };
 
   return (
-    <LinearGradient colors={['#05070D', '#101018', '#091916']} style={styles.screen}>
-      <View style={[styles.content, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 24 }]}>
+    <LinearGradient colors={[colors.setlogBg, '#FFF2F5', '#F7F4FF']} style={styles.screen}>
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 20, paddingBottom: insets.bottom + 24 }]}
+        keyboardShouldPersistTaps="handled"
+        showsVerticalScrollIndicator={false}
+      >
         <View>
           <Pressable onPress={onBack} style={styles.backButton}>
-            <Text style={styles.backText}>Back</Text>
+            <Text style={styles.backText}>{t('common.back')}</Text>
           </Pressable>
-          <Text style={styles.kicker}>Create account</Text>
-          <Text style={styles.title}>테스트 계정으로 시작</Text>
-          <Text style={styles.copy}>실제 인증은 나중에 연결하고, 지금은 가입 플로우와 세션 진입을 테스트한다.</Text>
+          <Text style={styles.kicker}>{mode === 'register' ? t('auth.create') : t('auth.login')}</Text>
+          <Text style={styles.title}>{mode === 'register' ? t('auth.registerTitle') : t('auth.loginTitle')}</Text>
+          <Text style={styles.copy}>{mode === 'register' ? t('auth.registerCopy') : t('auth.loginCopy')}</Text>
         </View>
 
         <View style={styles.form}>
-          <Field label="Email" value="junn@example.com" />
-          <Field label="Name" value="Junn" />
-          <Field label="Nickname" value="junn" />
-          <Field label="Password" value="••••••••" secure />
+          <Field label={t('auth.email')} value={email} onChangeText={setEmail} />
+          {mode === 'register' ? <Field label={t('auth.name')} value={displayName} onChangeText={setDisplayName} /> : null}
+          {mode === 'register' ? <Field label={t('auth.nickname')} value={handle} onChangeText={setHandle} /> : null}
+          <Field label={t('auth.password')} value={password} onChangeText={setPassword} secure />
+          {error ? <Text style={styles.errorText}>{error}</Text> : null}
         </View>
 
-        <View style={styles.socials}>
-          <Pressable style={styles.socialButton} onPress={onComplete}>
-            <Mail color={colors.ink} size={18} />
-            <Text style={styles.socialText}>Continue with Google mock</Text>
-          </Pressable>
-          <Pressable style={styles.socialButtonDark} onPress={onComplete}>
-            <Apple color={colors.text} size={18} />
-            <Text style={styles.socialTextDark}>Continue with Apple mock</Text>
-          </Pressable>
-        </View>
-
-        <Pressable style={styles.primaryButton} onPress={onComplete}>
-          <Text style={styles.primaryText}>Create mock account</Text>
+        <Pressable style={styles.primaryButton} onPress={() => submit(mode)} disabled={busy}>
+          <Text style={styles.primaryText}>{busy ? t('auth.working') : mode === 'register' ? t('auth.create') : t('auth.login')}</Text>
         </Pressable>
-      </View>
+
+        <View style={styles.secondaryActions}>
+          {mode === 'register' ? <Pressable style={styles.secondaryAction} onPress={createQuickAccount} disabled={busy}>
+            <Sparkles color={colors.setlogInk} size={18} />
+            <Text style={styles.secondaryActionText}>{t('auth.quick')}</Text>
+          </Pressable> : null}
+          <Pressable
+            style={styles.secondaryActionDark}
+            onPress={() => {
+              const nextMode = mode === 'register' ? 'login' : 'register';
+              setMode(nextMode);
+
+              if (nextMode === 'login') {
+                const loginInput = getDefaultLoginInput();
+                setEmail(loginInput.email);
+                setPassword(loginInput.password);
+              } else {
+                const nextAccount = createDefaultAccountSeed();
+                setEmail(nextAccount.email);
+                setDisplayName(nextAccount.displayName);
+                setHandle(nextAccount.handle);
+                setPassword(nextAccount.password);
+              }
+            }}
+            disabled={busy}
+          >
+            <LogIn color={colors.setlogInk} size={18} />
+            <Text style={styles.secondaryActionTextDark}>{mode === 'register' ? t('auth.loginExisting') : t('auth.createNew')}</Text>
+          </Pressable>
+        </View>
+
+      </ScrollView>
     </LinearGradient>
   );
 }
 
-function Field({ label, value, secure = false }: { label: string; value: string; secure?: boolean }) {
+function Field({ label, value, secure = false, onChangeText }: { label: string; value: string; secure?: boolean; onChangeText: (value: string) => void }) {
+  const { t } = useI18n();
+
   return (
     <View style={styles.field}>
       <Text style={styles.fieldLabel}>{label}</Text>
       <TextInput
-        editable={false}
+        editable
         secureTextEntry={secure}
         style={styles.input}
         value={value}
-        placeholderTextColor={colors.faint}
+        onChangeText={onChangeText}
+        autoCapitalize="none"
+        placeholderTextColor={colors.setlogFaint}
       />
-      <Text style={styles.validText}>Valid</Text>
+      <Text style={styles.validText}>{t('common.required')}</Text>
     </View>
   );
 }
@@ -72,7 +207,7 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   content: {
-    flex: 1,
+    flexGrow: 1,
     paddingHorizontal: 18,
   },
   backButton: {
@@ -81,27 +216,27 @@ const styles = StyleSheet.create({
     marginBottom: 18,
   },
   backText: {
-    color: colors.muted,
+    color: colors.setlogMuted,
     fontFamily: fonts.body,
     fontSize: 13,
     fontWeight: '900',
   },
   kicker: {
-    color: colors.lime,
+    color: colors.setlogLavender,
     fontFamily: fonts.body,
     fontSize: 12,
     fontWeight: '900',
     textTransform: 'uppercase',
   },
   title: {
-    color: colors.text,
+    color: colors.setlogInk,
     fontFamily: fonts.display,
     fontSize: 34,
     fontWeight: '900',
     marginTop: 6,
   },
   copy: {
-    color: colors.muted,
+    color: colors.setlogMuted,
     fontFamily: fonts.body,
     fontSize: 14,
     lineHeight: 20,
@@ -113,78 +248,86 @@ const styles = StyleSheet.create({
     marginTop: 28,
   },
   field: {
-    borderRadius: radius.panel,
-    borderColor: colors.line,
+    borderRadius: 18,
+    borderColor: colors.setlogLine,
     borderWidth: 1,
     padding: 12,
-    backgroundColor: colors.panel,
+    backgroundColor: colors.setlogPaper,
   },
   fieldLabel: {
-    color: colors.muted,
+    color: colors.setlogMuted,
     fontFamily: fonts.body,
     fontSize: 11,
     fontWeight: '900',
     textTransform: 'uppercase',
   },
   input: {
-    color: colors.text,
+    color: colors.setlogInk,
     fontFamily: fonts.body,
     fontSize: 17,
     fontWeight: '900',
     paddingVertical: 7,
   },
   validText: {
-    color: colors.lime,
+    color: colors.setlogMint,
     fontFamily: fonts.body,
     fontSize: 11,
     fontWeight: '900',
   },
-  socials: {
-    gap: 10,
-    marginTop: 'auto',
-    marginBottom: 12,
-  },
-  socialButton: {
-    height: 52,
-    borderRadius: radius.panel,
-    backgroundColor: colors.text,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-  },
-  socialButtonDark: {
-    height: 52,
-    borderRadius: radius.panel,
-    borderColor: colors.line,
-    borderWidth: 1,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 8,
-    backgroundColor: 'rgba(245, 247, 242, 0.06)',
-  },
-  socialText: {
-    color: colors.ink,
+  errorText: {
+    color: colors.coral,
     fontFamily: fonts.body,
-    fontSize: 14,
+    fontSize: 12,
+    fontWeight: '800',
+  },
+  secondaryActions: {
+    flexDirection: 'row',
+    gap: 10,
+    marginTop: 10,
+  },
+  secondaryAction: {
+    flex: 1,
+    height: 50,
+    borderRadius: 18,
+    backgroundColor: colors.setlogPaper,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  secondaryActionDark: {
+    flex: 1,
+    height: 50,
+    borderRadius: 18,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+    backgroundColor: colors.setlogPaper,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 7,
+  },
+  secondaryActionText: {
+    color: colors.setlogInk,
+    fontFamily: fonts.body,
+    fontSize: 12,
     fontWeight: '900',
   },
-  socialTextDark: {
-    color: colors.text,
+  secondaryActionTextDark: {
+    color: colors.setlogInk,
     fontFamily: fonts.body,
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: '900',
   },
   primaryButton: {
     height: 56,
-    borderRadius: radius.panel,
-    backgroundColor: colors.lime,
+    borderRadius: 18,
+    backgroundColor: colors.setlogMint,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryText: {
-    color: colors.ink,
+    color: colors.setlogInk,
     fontFamily: fonts.body,
     fontSize: 16,
     fontWeight: '900',
