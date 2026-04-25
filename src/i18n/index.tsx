@@ -103,6 +103,10 @@ const translations = {
     'auth.failed': 'Authentication failed.',
     'auth.incorrect': 'Existing account login failed. If this is your first time, tap Create account.',
     'auth.already': 'This email or nickname already exists. Use Log in for an existing account, or Quick test account for a new test account.',
+    'auth.oauthDivider': 'or continue with',
+    'auth.continueWithGoogle': 'Continue with Google',
+    'auth.continueWithApple': 'Continue with Apple',
+    'auth.oauthComingSoon': 'Social login is coming in the next sprint.',
 
     'permissions.kicker': 'Permissions',
     'permissions.title': 'For memories that open at places',
@@ -367,6 +371,10 @@ const translations = {
     'auth.failed': '인증에 실패했습니다.',
     'auth.incorrect': '기존 계정 로그인에 실패했습니다. 처음이면 계정 만들기를 누르세요.',
     'auth.already': '이미 있는 이메일/닉네임입니다. 기존 계정이면 로그인, 새 테스트 계정이면 빠른 테스트 계정을 누르세요.',
+    'auth.oauthDivider': '또는 다음으로 계속',
+    'auth.continueWithGoogle': 'Google로 계속하기',
+    'auth.continueWithApple': 'Apple로 계속하기',
+    'auth.oauthComingSoon': '소셜 로그인은 다음 스프린트에서 연결됩니다.',
 
     'permissions.kicker': '권한',
     'permissions.title': '장소 기억을 위해',

@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { LogIn, Sparkles } from 'lucide-react-native';
 import { useState } from 'react';
-import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { translateServerMessage, useI18n } from '../i18n';
@@ -177,6 +177,45 @@ export function AuthScreen({ initialMode = 'register', onComplete, onBack }: Pro
           </Pressable>
         </View>
 
+        <View style={styles.oauthDivider}>
+          <View style={styles.oauthDividerLine} />
+          <Text style={styles.oauthDividerText}>{t('auth.oauthDivider')}</Text>
+          <View style={styles.oauthDividerLine} />
+        </View>
+
+        <View style={styles.oauthButtons}>
+          <Pressable
+            accessibilityRole="button"
+            style={styles.oauthButton}
+            onPress={() => {
+              // TODO(S2/S3): wire up Google OAuth via expo-auth-session.
+              // - Read EXPO_PUBLIC_GOOGLE_CLIENT_ID from env
+              // - Use Google.useAuthRequest({ clientId, ... })
+              // - Exchange id_token with backend /auth/oauth/google
+              Alert.alert('Coming soon', t('auth.oauthComingSoon'));
+            }}
+          >
+            <Text style={styles.oauthButtonText}>{t('auth.continueWithGoogle')}</Text>
+          </Pressable>
+          {Platform.OS === 'ios' || Platform.OS === 'web' ? (
+            <Pressable
+              accessibilityRole="button"
+              style={[styles.oauthButton, styles.oauthButtonDark]}
+              onPress={() => {
+                // TODO(S2/S3): wire up Apple Sign-In via expo-apple-authentication.
+                // - Use AppleAuthentication.signInAsync({ requestedScopes: [...] })
+                // - Exchange identityToken with backend /auth/oauth/apple
+                // - Use EXPO_PUBLIC_APPLE_SERVICES_ID for web fallback
+                Alert.alert('Coming soon', t('auth.oauthComingSoon'));
+              }}
+            >
+              <Text style={[styles.oauthButtonText, styles.oauthButtonTextLight]}>
+                {t('auth.continueWithApple')}
+              </Text>
+            </Pressable>
+          ) : null}
+        </View>
+
       </ScrollView>
     </LinearGradient>
   );
@@ -331,5 +370,49 @@ const styles = StyleSheet.create({
     fontFamily: fonts.body,
     fontSize: 16,
     fontWeight: '900',
+  },
+  oauthDivider: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 10,
+    marginTop: 18,
+  },
+  oauthDividerLine: {
+    flex: 1,
+    height: 1,
+    backgroundColor: colors.setlogLine,
+  },
+  oauthDividerText: {
+    color: colors.setlogMuted,
+    fontFamily: fonts.body,
+    fontSize: 11,
+    fontWeight: '900',
+    textTransform: 'uppercase',
+  },
+  oauthButtons: {
+    gap: 10,
+    marginTop: 12,
+  },
+  oauthButton: {
+    height: 50,
+    borderRadius: 18,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+    backgroundColor: colors.setlogPaper,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  oauthButtonDark: {
+    backgroundColor: colors.setlogInk,
+    borderColor: colors.setlogInk,
+  },
+  oauthButtonText: {
+    color: colors.setlogInk,
+    fontFamily: fonts.body,
+    fontSize: 14,
+    fontWeight: '900',
+  },
+  oauthButtonTextLight: {
+    color: '#FFFFFF',
   },
 });
