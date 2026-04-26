@@ -2927,11 +2927,11 @@ function createPostgresRepository(databaseUrl: string) {
     const result = await queryDatabase<DbPlaceRow & { distance_meters: string | number | null }>(
       databaseUrl,
       `select p.*,
-              ST_Distance(p.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography)::int as distance_meters
+              ST_Distance(p.geog, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography)::int as distance_meters
          from places p
-        where p.geom is not null
-          and ST_DWithin(p.geom, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
-        order by p.geom <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
+        where p.geog is not null
+          and ST_DWithin(p.geog, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, $3)
+        order by p.geog <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography
         limit $4`,
       [longitude, latitude, radiusMeters, limit],
     );

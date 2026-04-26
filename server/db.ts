@@ -94,6 +94,7 @@ export async function migrateDatabase(databaseUrl: string | null) {
     '007_memory_post_media_urls.sql',
     '008_postgis.sql',
     '009_email_tokens.sql',
+    '010_postgis.sql',
   ];
   let applied = 0;
 

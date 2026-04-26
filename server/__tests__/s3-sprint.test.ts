@@ -191,6 +191,66 @@ async function main() {
     await queryDatabase(config.databaseUrl, 'delete from memory_posts where id = any($1::text[])', [ids]);
   });
 
+  // ── PostGIS: ST_DWithin 반경 쿼리 검증 ────────────────────────────────────
+  // 두 장소를 ~1 km 떨어진 위치에 삽입.
+  // 500 m 반경 쿼리에서 가까운 것만 반환되는지 확인.
+  await test('PostGIS: 500m 반경 쿼리 — 1km 떨어진 두 좌표 중 1개만 반환', async () => {
+    const origin = { lat: 37.5665, lng: 126.9780 }; // 서울 시청 근처
+    // ~1.1 km 북쪽: lat 0.01° ≈ 1111 m
+    const farLat = origin.lat + 0.01;
+    const idNear = `postgis-near-${randomUUID()}`;
+    const idFar  = `postgis-far-${randomUUID()}`;
+
+    await queryDatabase(config.databaseUrl, `
+      insert into places (id, name, subtitle, city, lat, lng, map_x, map_y, intensity, unlocked, unlock_radius_meters, upload_radius_meters)
+      values ($1, 'GIS Near', 'test', 'Seoul', $2, $3, 0, 0, 5, true, 200, 120),
+             ($4, 'GIS Far',  'test', 'Seoul', $5, $6, 0, 0, 5, true, 200, 120)
+    `, [idNear, origin.lat, origin.lng, idFar, farLat, origin.lng]);
+
+    // 010_postgis.sql 이 적용되어 있으면 geog 가 generated stored 로 채워짐.
+    // 500 m 반경 내에 near만 있어야 함.
+    const res = await queryDatabase<{ id: string }>(
+      config.databaseUrl,
+      `select id from places
+        where ST_DWithin(geog, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 500)
+          and id = any($3::text[])`,
+      [origin.lng, origin.lat, [idNear, idFar]],
+    );
+
+    assert.equal(res.rows.length, 1, `500m 반경에 ${res.rows.length}개 반환 (1개 기대)`);
+    assert.equal(res.rows[0].id, idNear, '가까운 장소가 반환되어야 함');
+
+    await queryDatabase(config.databaseUrl, 'delete from places where id = any($1::text[])', [[idNear, idFar]]);
+  });
+
+  await test('PostGIS: KNN 정렬 — 가까운 순서 보장', async () => {
+    const origin = { lat: 37.5665, lng: 126.9780 };
+    const idA = `postgis-knn-a-${randomUUID()}`;
+    const idB = `postgis-knn-b-${randomUUID()}`;
+
+    // A: ~200 m 북쪽 (lat 0.0018°), B: ~800 m 북쪽 (lat 0.0072°)
+    await queryDatabase(config.databaseUrl, `
+      insert into places (id, name, subtitle, city, lat, lng, map_x, map_y, intensity, unlocked, unlock_radius_meters, upload_radius_meters)
+      values ($1, 'KNN A', 'test', 'Seoul', $2, $3, 0, 0, 5, true, 200, 120),
+             ($4, 'KNN B', 'test', 'Seoul', $5, $6, 0, 0, 5, true, 200, 120)
+    `, [idA, origin.lat + 0.0018, origin.lng, idB, origin.lat + 0.0072, origin.lng]);
+
+    const res = await queryDatabase<{ id: string }>(
+      config.databaseUrl,
+      `select id from places
+        where ST_DWithin(geog, ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography, 2000)
+          and id = any($3::text[])
+        order by geog <-> ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography`,
+      [origin.lng, origin.lat, [idA, idB]],
+    );
+
+    assert.equal(res.rows.length, 2, '두 장소 모두 2km 반경 내');
+    assert.equal(res.rows[0].id, idA, '가까운 A가 먼저 반환');
+    assert.equal(res.rows[1].id, idB, '먼 B가 두 번째 반환');
+
+    await queryDatabase(config.databaseUrl, 'delete from places where id = any($1::text[])', [[idA, idB]]);
+  });
+
   await app.close();
   await app2.close();
 }
