@@ -94,10 +94,17 @@ Useful local API routes:
 - `GET /health`
 - `GET /v1/feed?mode=Following`
 - `GET /v1/places`
+- `GET /v1/places/nearby?lat=&lng=`
 - `GET /v1/places/:placeKey`
 - `POST /v1/check-ins`
+- `POST /v1/media/presign`
 - `POST /v1/memories`
 - `POST /v1/posts/:postId/actions`
+- `GET /v1/auth/sessions`
+- `POST /v1/auth/verify-email/request`
+- `POST /v1/auth/password-reset/request`
+
+Full API reference: [docs/api.md](docs/api.md)
 
 ## Infra Boundary
 

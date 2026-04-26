@@ -52,6 +52,13 @@ To wipe ALL dev data (postgres + minio volumes), run the explicit DESTRUCTIVE co
 To roll back the PostGIS migration manually:
 `psql "$DATABASE_URL" -f server/migrations/008_postgis.down.sql && psql "$DATABASE_URL" -c "delete from schema_migrations where id='008_postgis.sql';"`
 
+Migration `009_email_tokens.sql` (S3 sprint) adds:
+- Session metadata columns (`user_agent`, `ip`, `last_seen_at`, `revoked_at`) for the active sessions view and per-session revocation.
+- `email_verification_tokens` and `password_reset_tokens` tables — single-use, hashed, with `expires_at`.
+- `post_media` table for the presigned upload flow (decoupled from `memory_posts.media_url`).
+
+There is no down script for `009`; roll back manually if needed.
+
 ```bash
 npm run qa:public
 ```
@@ -72,6 +79,8 @@ The default development login is:
 - OpenStreetMap public raster tiles substitute for a production map provider during development.
 - Expo web substitutes for native builds during product-flow QA.
 - Location checks default to a dev override so remote friends can test check-in flows. Set `HAPPENED_DEV_LOCATION_OVERRIDE=0` to enforce measured GPS distance and 50m accuracy.
-- Media storage is behind `server/media.ts`. Keep `MEDIA_STORAGE_DRIVER=local` while the Mac mini is the preview host; object storage can be added behind the same interface later.
+- Media storage: **MinIO** (`S3_*` env) is now the active dev substitute for object storage. Clients call `POST /v1/media/presign` to get a presigned PUT URL, upload directly to MinIO, then pass the returned `key` to `POST /v1/memories`. `MEDIA_STORAGE_DRIVER=local` + `.local/uploads/` remain as a deprecated fallback only when `S3_ENDPOINT` is unset.
+- `APP_PUBLIC_URL` must match the public URL the app is served on so that verification and password-reset email links resolve correctly. Defaults to `http://localhost:8081`.
+- `DEV_TEST_PASSWORD` sets the seeded test account password (default `happened-test-1`). Never commit a real value.
 
 These are accepted only for the first development target. Before public launch, DB hosting, object storage, auth provider, observability, CI/CD, app distribution, legal docs, and moderation operations need explicit production choices.
