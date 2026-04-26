@@ -171,7 +171,7 @@ async function main() {
     const seen = new Set<string>();
     let cursor: string | null = null;
     for (let page = 0; page < 4; page++) {
-      const url = `/v1/feed?mode=Memories&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
+      const url: string = `/v1/feed?mode=Memories&limit=2${cursor ? `&cursor=${encodeURIComponent(cursor)}` : ''}`;
       const r = await app2.inject({ method: 'GET', url, headers: { authorization: 'Bearer none' } });
       assert.equal(r.statusCode, 200, r.body);
       const body = r.json().data;
