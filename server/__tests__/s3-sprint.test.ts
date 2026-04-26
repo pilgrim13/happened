@@ -18,6 +18,7 @@ import { buildServer } from '../app';
 import { getConfig } from '../config';
 import { queryDatabase } from '../db';
 import { createObjectStorage } from '../storage';
+import { generateAnniversaryRecalls } from '../recall';
 
 function test(name: string, fn: () => Promise<void> | void) {
   return Promise.resolve(fn())
@@ -249,6 +250,111 @@ async function main() {
     assert.equal(res.rows[1].id, idB, '먼 B가 두 번째 반환');
 
     await queryDatabase(config.databaseUrl, 'delete from places where id = any($1::text[])', [[idA, idB]]);
+  });
+
+  // ── Push 토큰 등록 / 폐기 ──────────────────────────────────────────────────
+  await test('push 토큰 등록 201 + 중복 등록 idempotent', async () => {
+    const reg = await uniqueRegister(app2);
+    const pushToken = `expo_test_${randomUUID()}`;
+
+    // 최초 등록 → 201
+    const r1 = await app2.inject({
+      method: 'POST',
+      url: '/v1/push/register',
+      headers: { authorization: `Bearer ${reg.token}` },
+      payload: { token: pushToken, platform: 'ios' },
+    });
+    assert.equal(r1.statusCode, 201, r1.body);
+    assert.equal(r1.json().data.ok, true);
+
+    // 동일 토큰 재등록 → 201 (upsert)
+    const r2 = await app2.inject({
+      method: 'POST',
+      url: '/v1/push/register',
+      headers: { authorization: `Bearer ${reg.token}` },
+      payload: { token: pushToken, platform: 'ios' },
+    });
+    assert.equal(r2.statusCode, 201, '중복 등록 idempotent 실패');
+
+    // 폐기
+    const r3 = await app2.inject({
+      method: 'DELETE',
+      url: '/v1/push/register',
+      headers: { authorization: `Bearer ${reg.token}` },
+      payload: { token: pushToken },
+    });
+    assert.equal(r3.statusCode, 200, r3.body);
+    assert.equal(r3.json().data.ok, true);
+
+    // DB 확인: revoked_at 이 채워져야 함
+    const rows = await queryDatabase<{ revoked_at: string | null }>(
+      config.databaseUrl,
+      `select revoked_at from push_tokens where token = $1`,
+      [pushToken],
+    );
+    assert.ok(rows.rows[0]?.revoked_at, 'revoked_at 이 null 이면 안 됨');
+  });
+
+  // ── Anniversary recall 생성 후 listRecallFeed ───────────────────────────────
+  await test('anniversary recall 생성 → listRecallFeed 조회 → dismiss', async () => {
+    const reg = await uniqueRegister(app2);
+    const now = new Date();
+
+    // 오늘과 같은 월/일로 memory_post 삽입 (Korea time 기준)
+    const postId = `recall-test-${randomUUID()}`;
+    const month = now.getUTCMonth() + 1;
+    const day   = now.getUTCDate();
+    // created_at 을 올해가 아닌 작년 같은 날로
+    const lastYear = now.getUTCFullYear() - 1;
+    const createdAt = `${lastYear}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}T00:00:00Z`;
+
+    await queryDatabase(config.databaseUrl, `
+      insert into memory_posts
+        (id, mode, user_id, author_name, author_handle, place_id, place_name, city,
+         distance_meters, unlock_radius_meters, unlock_state, visibility, caption,
+         time_label, film_stamp, recall_label, media_colors, media_url, accent_color, stats, created_at)
+      values
+        ($1, 'Memories', $2, 'Test', '@recall_test', null, 'Test', 'Seoul',
+         0, 200, 'open', 'Public', 'recall caption',
+         'just', 'STAMP', null, '[]'::jsonb, null, '#fff',
+         '{"echoes":0,"replies":0,"saves":0}'::jsonb, $3)
+    `, [postId, reg.user.id, createdAt]);
+
+    // generateAnniversaryRecalls 실행
+    const result = await generateAnniversaryRecalls(config.databaseUrl!, now);
+    assert.ok(result.created >= 1 || result.skipped >= 1, 'recall 이 생성되거나 이미 존재해야 함');
+
+    // GET /v1/recall/feed
+    const feedRes = await app2.inject({
+      method: 'GET',
+      url: '/v1/recall/feed',
+      headers: { authorization: `Bearer ${reg.token}` },
+    });
+    assert.equal(feedRes.statusCode, 200, feedRes.body);
+    const feed = feedRes.json().data as Array<{ id: string; kind: string; sourcePostId: string }>;
+    const recallItem = feed.find((e) => e.sourcePostId === postId);
+    assert.ok(recallItem, 'recall feed 에 삽입한 게시물 기반 항목이 있어야 함');
+    assert.equal(recallItem!.kind, 'anniversary');
+
+    // POST /v1/recall/:id/dismiss
+    const dismissRes = await app2.inject({
+      method: 'POST',
+      url: `/v1/recall/${recallItem!.id}/dismiss`,
+      headers: { authorization: `Bearer ${reg.token}` },
+    });
+    assert.equal(dismissRes.statusCode, 200, dismissRes.body);
+    assert.equal(dismissRes.json().data.ok, true);
+
+    // dismiss 후 delivered_at 이 채워졌는지 DB 확인
+    const check = await queryDatabase<{ delivered_at: string | null }>(
+      config.databaseUrl,
+      `select delivered_at from recall_events where id = $1`,
+      [recallItem!.id],
+    );
+    assert.ok(check.rows[0]?.delivered_at, 'dismiss 후 delivered_at 이 null 이면 안 됨');
+
+    // 정리
+    await queryDatabase(config.databaseUrl, `delete from memory_posts where id = $1`, [postId]);
   });
 
   await app.close();

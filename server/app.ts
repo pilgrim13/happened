@@ -33,6 +33,9 @@ import {
   searchQuerySchema,
   nearbyQuerySchema,
   userParamsSchema,
+  pushRegisterSchema,
+  pushRevokeSchema,
+  recallParamsSchema,
 } from './schemas';
 
 const ALLOWED_PHOTO_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
@@ -504,6 +507,35 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     });
 
     return reply.status(201).send({ data: result });
+  });
+
+  // ─── 푸시 토큰 등록/폐기 ────────────────────────────────────────────────────
+
+  app.post('/v1/push/register', async (request, reply) => {
+    const body = pushRegisterSchema.parse(request.body);
+    const sessionToken = authHeaderSchema.parse(request.headers.authorization);
+    await repository.registerPushToken(sessionToken, body.token, body.platform);
+    return reply.status(201).send({ data: { ok: true } });
+  });
+
+  app.delete('/v1/push/register', async (request) => {
+    const body = pushRevokeSchema.parse(request.body);
+    const sessionToken = authHeaderSchema.parse(request.headers.authorization);
+    await repository.revokePushToken(sessionToken, body.token);
+    return { data: { ok: true } };
+  });
+
+  // ─── Recall 피드 조회 / dismiss ──────────────────────────────────────────────
+
+  app.get('/v1/recall/feed', async (request) => {
+    const sessionToken = authHeaderSchema.parse(request.headers.authorization);
+    return { data: await repository.listRecallFeed(sessionToken) };
+  });
+
+  app.post('/v1/recall/:id/dismiss', async (request) => {
+    const params = recallParamsSchema.parse(request.params);
+    const sessionToken = authHeaderSchema.parse(request.headers.authorization);
+    return { data: await repository.dismissRecall(sessionToken, params.id) };
   });
 
   app.get('/uploads/:fileName', async (request, reply) => {

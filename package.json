@@ -21,6 +21,7 @@
     "preview:local": "node scripts/serve-preview.mjs",
     "qa:public": "node scripts/qa-public.mjs",
     "capture:prototype": "node scripts/capture-prototype.mjs",
+    "recall:anniversary": "tsx server/scripts/run-recall-anniversary.ts",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {

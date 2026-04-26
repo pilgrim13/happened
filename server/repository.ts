@@ -23,6 +23,7 @@ import type {
 } from '../src/types/happened';
 import { migrateDatabase, queryDatabase, withTransaction } from './db';
 import { LocalStore, type StorePostAction, type StoreUser } from './localStore';
+import { rowToRecallEvent, type DbRecallEventRow, type RecallEvent } from './recall';
 
 type RepositoryErrorCode =
   | 'auth_failed'
@@ -1348,6 +1349,11 @@ function createLocalRepository(store = new LocalStore()) {
     issueCheckIn,
     createMemory,
     findNearbyPlaces,
+    // push / recall — in-memory fallback
+    registerPushToken: async (_sessionToken: string | null, _token: string, _platform: string) => ({ ok: true }),
+    revokePushToken: async (_sessionToken: string | null, _token: string) => ({ ok: true }),
+    listRecallFeed: async (_sessionToken: string | null) => [] as RecallEvent[],
+    dismissRecall: async (_sessionToken: string | null, _id: string) => ({ ok: true }),
   };
 }
 
@@ -2921,6 +2927,72 @@ function createPostgresRepository(databaseUrl: string) {
     return getNotifications(sessionToken);
   }
 
+  // ─── 푸시 토큰 등록/폐기 ────────────────────────────────────────────────────
+
+  async function registerPushToken(sessionToken: string | null, token: string, platform: string) {
+    const viewer = await getUserFromSession(sessionToken ?? null);
+    if (!viewer) {
+      throw new RepositoryError('auth_failed', 'Sign in to register a push token.');
+    }
+    const now = new Date().toISOString();
+    // upsert: 이미 같은 (user_id, token) 조합이 있으면 last_seen_at 갱신 및 revoked_at 초기화
+    await queryDatabase(databaseUrl, `
+      insert into push_tokens (id, user_id, token, platform, opt_in_at, last_seen_at, created_at)
+      values ($1, $2, $3, $4, $5, $5, $5)
+      on conflict (user_id, token) do update
+        set platform = excluded.platform,
+            last_seen_at = excluded.last_seen_at,
+            revoked_at = null
+    `, [randomUUID(), viewer.id, token, platform, now]);
+    // push_opt_in_at 업데이트 (최초 등록 시에만)
+    await queryDatabase(databaseUrl, `
+      update users set push_opt_in_at = coalesce(push_opt_in_at, $1) where id = $2
+    `, [now, viewer.id]);
+    return { ok: true };
+  }
+
+  async function revokePushToken(sessionToken: string | null, token: string) {
+    const viewer = await getUserFromSession(sessionToken ?? null);
+    if (!viewer) {
+      throw new RepositoryError('auth_failed', 'Sign in to revoke a push token.');
+    }
+    await queryDatabase(databaseUrl, `
+      update push_tokens set revoked_at = now()
+      where user_id = $1 and token = $2 and revoked_at is null
+    `, [viewer.id, token]);
+    return { ok: true };
+  }
+
+  // ─── Recall 피드 조회 / dismiss ──────────────────────────────────────────────
+
+  async function listRecallFeed(sessionToken: string | null): Promise<RecallEvent[]> {
+    const viewer = await getUserFromSession(sessionToken ?? null);
+    if (!viewer) {
+      throw new RepositoryError('auth_failed', 'Sign in to view recall feed.');
+    }
+    const result = await queryDatabase<DbRecallEventRow>(databaseUrl, `
+      select id, kind, source_post_id, place_id, scheduled_for, delivered_at, created_at
+        from recall_events
+       where user_id = $1
+         and (delivered_at is null or delivered_at > now() - interval '7 days')
+       order by scheduled_for desc
+       limit 50
+    `, [viewer.id]);
+    return result.rows.map(rowToRecallEvent);
+  }
+
+  async function dismissRecall(sessionToken: string | null, id: string) {
+    const viewer = await getUserFromSession(sessionToken ?? null);
+    if (!viewer) {
+      throw new RepositoryError('auth_failed', 'Sign in to dismiss recall.');
+    }
+    await queryDatabase(databaseUrl, `
+      update recall_events set delivered_at = now()
+      where id = $1 and user_id = $2 and delivered_at is null
+    `, [id, viewer.id]);
+    return { ok: true };
+  }
+
   // PostGIS-backed nearby search. Uses ST_DWithin (uses GIST index) for filtering
   // and KNN (`<->`) for distance ordering. radiusMeters defaults to 5km.
   async function findNearbyPlaces({ latitude, longitude, radiusMeters = 5000, limit = 20 }: { latitude: number; longitude: number; radiusMeters?: number; limit?: number; }) {
@@ -2974,6 +3046,10 @@ function createPostgresRepository(databaseUrl: string) {
     issueCheckIn,
     createMemory,
     findNearbyPlaces,
+    registerPushToken,
+    revokePushToken,
+    listRecallFeed,
+    dismissRecall,
   };
 }
 

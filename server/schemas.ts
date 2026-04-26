@@ -159,6 +159,19 @@ export const authHeaderSchema = z
     return value.slice('Bearer '.length).trim() || null;
   });
 
+export const pushRegisterSchema = z.object({
+  token: z.string().trim().min(1).max(500),
+  platform: z.enum(['ios', 'android', 'web']),
+});
+
+export const pushRevokeSchema = z.object({
+  token: z.string().trim().min(1).max(500),
+});
+
+export const recallParamsSchema = z.object({
+  id: z.string().min(1),
+});
+
 export type FeedModeInput = z.infer<typeof feedModeSchema>;
 export type PostActionRequest = z.infer<typeof postActionRequestSchema>;
 export type CheckInRequest = z.infer<typeof checkInRequestSchema>;
