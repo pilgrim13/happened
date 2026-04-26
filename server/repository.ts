@@ -3142,7 +3142,9 @@ function createPostgresRepository(databaseUrl: string) {
 export async function createRepository(databaseUrl?: string | null) {
   if (databaseUrl) {
     await migrateDatabase(databaseUrl);
-    await ensurePostgresSeed(databaseUrl);
+    if (process.env.HAPPENED_SEED_ENABLED === '1') {
+      await ensurePostgresSeed(databaseUrl);
+    }
     return createPostgresRepository(databaseUrl);
   }
 

@@ -151,7 +151,7 @@ proxyServer = http.createServer((req, res) => {
   serveStatic(req, res);
 });
 
-proxyServer.listen(PROXY_PORT, '127.0.0.1', () => {
+proxyServer.listen(PROXY_PORT, process.env.HAPPENED_PROXY_HOST ?? '127.0.0.1', () => {
   console.log(`[happened] preview proxy ready: http://127.0.0.1:${PROXY_PORT}`);
   console.log(`[happened] api health: http://127.0.0.1:${PROXY_PORT}/health`);
 });

@@ -61,7 +61,7 @@ function getWebDefaultApiUrl() {
     return null;
   }
 
-  return `${window.location.protocol}//${window.location.hostname}:4017`;
+  return `${window.location.protocol}//${window.location.hostname}${window.location.port ? `:${window.location.port}` : ''}`;
 }
 
 export function getApiBaseUrl() {

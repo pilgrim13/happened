@@ -133,7 +133,7 @@ export const profileUpdateRequestSchema = z
       .trim()
       .min(2)
       .max(32)
-      .regex(/^[a-zA-Z0-9_.]+$/)
+      .regex(/^[\p{L}\p{N}_.]+$/u, 'Handle must contain only letters, numbers, underscore, or dot.')
       .optional(),
     bio: z.string().trim().max(160).optional(),
     avatarDataUrl: z.string().max(12_000_000).optional(),

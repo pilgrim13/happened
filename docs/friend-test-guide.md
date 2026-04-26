@@ -1,69 +1,138 @@
-# Happened Friend Test Guide
+# Happened — 친구 QA 가이드 (V1 베타)
 
-## Public URL
+> **이 단계의 목적**: 진짜 운영처럼 회원가입 → 로그인 → 글 작성 → 피드 / 검색 / 지도 / 회상 화면을 다 같이 써보고 버그/UX 피드백 모으기.
 
-Use the fixed preview URL:
+테스트 기간 동안 **데이터는 보존**되니까 한 번 가입하면 계속 그 계정으로 쓰면 됨.
 
-```text
-https://euryhaline-lita-insupportably.ngrok-free.dev
-```
+---
 
-The first ngrok visit may show a warning page. Tap `Visit Site` once, then the app opens normally.
+## 0. 다 같이 알아둘 것
 
-The Mac mini, Docker Postgres, preview proxy, and ngrok tunnel must stay running while friends test.
+| 항목 | 내용 |
+|---|---|
+| 접속 URL | https://euryhaline-lita-insupportably.ngrok-free.dev |
+| 비용 | 무료. 데이터 요금만 사용함 |
+| 인터넷 | 외부망 OK (LTE/5G/Wi‑Fi 어디든) |
+| 환경 | 웹앱 (사파리/크롬에서 실행) |
+| 데이터 보존 | DB 보존됨. 글/사진/팔로우는 계속 남음 |
+| 위치 권한 | 글 작성 / 지도 기능에 필수 |
+| 카메라 / 사진 권한 | 글 작성 시 사진 업로드용 |
+| 알림 | 웹에서는 푸시 미동작 (정상). 네이티브 앱 단계에서 활성 |
 
-## Test Login
+⚠️ **현재 미동작 (웹 한계, 정상)**
+- 푸시 알림
+- "Apple로 계속하기" 버튼 (iOS 네이티브 전용)
+- 시스템 풀스크린 카메라 (대신 사진첩 picker가 뜸)
+- `happened://` 딥링크
 
-```text
-Email: test@happened.dev
-Password: happened-test-1
-```
+---
 
-Friends can also create their own account with `Create account`. The browser keeps the login session for the configured session period and remembers the last email after sign-out. Passwords are not saved.
+## 1. 아이폰 사파리 — 홈 화면에 추가 (앱처럼 만들기)
 
-## What To Test
+> **사파리에서만 가능**. 크롬으로 열면 "홈 화면에 추가" 안 뜸. 처음 접속 시 한 번만 하면 됨.
 
-1. Open the URL on iPhone Safari or mobile Chrome.
-2. Create a new account, then sign out and log back in.
-3. Close and reopen the browser tab to confirm the session is restored.
-4. Finish the permissions screen.
-5. Use the home feed: switch tabs, search, open notifications, open a place.
-6. Tap the camera button on Home to start a post from the nearest/default place.
-7. Check in, write a caption, and post a memory.
-8. Use the Home refresh button or pull-to-refresh to see newly posted memories.
-9. Log in with another account and confirm the first account's post appears in the main Following feed.
-10. Use post actions: echo, save, reply, report, hide.
-11. Open the map, drag it, zoom in/out, tap places, and use the locate button.
-12. Check that bottom navigation, keyboard, and Safari bottom address bar do not cover primary controls.
+1. **사파리** 열기 → 주소창에 다음 붙여넣기:
+   ```
+   https://euryhaline-lita-insupportably.ngrok-free.dev
+   ```
+2. ngrok 안내 페이지가 나오면 **"Visit Site"** 또는 **"방문"** 한 번 눌러주기 *(브라우저당 1회)*
+3. 첫 화면 뜨면 하단 **공유 버튼** ⬆️ 누르기
+4. 메뉴 내려서 **"홈 화면에 추가"** 누르기
+5. 이름은 `Happened` 그대로 → **"추가"**
+6. 홈 화면에 아이콘 생성됨. 이제 **그 아이콘으로 들어와야 함** (사파리로 들어오면 캐시 꼬일 수 있음)
+7. 회원가입 → 이메일 / 이름 / 닉네임 / 비밀번호 입력 → 시작
 
-## Known Dev Substitutes
+**위치 / 카메라 권한 안내**
+- 글 작성 누르면 사파리가 위치 권한 묻는다 → **"한 번 허용"** 또는 **"항상 허용"**
+- 사진 업로드는 사진첩에서 선택하는 형태
 
-- The preview uses ngrok and this Mac mini, not deployed hosting.
-- Data persists in local Docker Postgres.
-- Uploads persist through the local media storage provider on the Mac mini filesystem.
-- Map tiles load from OpenStreetMap for development.
-- Location radius is relaxed for development so remote friends can test check-in flows.
-- No external analytics, product event logging, or crash logging is installed.
-- Local-vs-production differences are tracked in `docs/local-vs-production.md`.
+**팁**
+- 화면이 이상하면: 홈 아이콘 길게 누르고 "삭제" → 위 1번부터 다시
+- 빠른 새로고침: 아이콘으로 들어와서 화면을 아래로 끝까지 드래그
 
-## File Handoff
+---
 
-Use this local handoff area for screenshots, recordings, notes, and generated QA artifacts:
+## 2. 안드로이드 크롬 — 홈 화면에 추가
 
-```text
-/Users/junnyeonglee/codex-projects/happened/.local/handoff/from-user
-/Users/junnyeonglee/codex-projects/happened/.local/handoff/from-codex
-/Users/junnyeonglee/codex-projects/happened/.local/qa
-```
+1. **Chrome** 열기 → 주소창에 다음 붙여넣기:
+   ```
+   https://euryhaline-lita-insupportably.ngrok-free.dev
+   ```
+2. ngrok 안내 페이지가 나오면 **"Visit Site"** 누르기
+3. Chrome이 자동으로 **"앱 설치 / 홈 화면에 추가"** 배너를 띄움
+   - 안 뜨면 우측 상단 **⋮ (점 3개)** → **"홈 화면에 추가"**
+4. 이름은 `Happened` 그대로 → **"추가"**
+5. 홈 화면 아이콘으로 들어와서 회원가입
 
-Ask Hermes Agent to drop user-provided screenshots or videos into `from-user`. Codex-generated screenshots and notes can go into `from-codex` or `.local/qa`.
+**위치 / 카메라 권한 안내**
+- 첫 사용 시 위치 / 카메라 권한 묻는다 → **"허용"**
+- 안드로이드는 시스템 카메라 직접 촬영도 가능 (사파리보다 자연스러움)
 
-## QA Command
+---
 
-Run this before sharing the URL:
+## 3. 회원가입 동선 (모두 공통)
 
-```bash
-npm run qa:public
-```
+1. 첫 화면 → **"새 계정 만들기"** 또는 **"가입"**
+2. 입력
+   - **이메일**: 본인 진짜 이메일 OK (지금 단계는 인증 메일 발송 안 함)
+   - **이름**: 보여줄 이름 (한글/영문 OK, 예: "기나")
+   - **닉네임**: 영문/숫자/한글/언더스코어/점 (2~32자, 예: "gina_kim")
+   - **비밀번호**: 8자 이상 권장
+3. **"계정 만들기"** 버튼 → 자동 로그인
+4. 권한 화면에서 위치 / 알림 동의 (알림은 웹에선 안 뜨지만 토글만 해두기)
+5. 튜토리얼 → 홈 화면
 
-It checks health, default login, session restore, new registration, feed actions, hide persistence, check-in, memory creation, cross-account post visibility, and mobile screenshot overflow at 390px and 430px widths.
+**비밀번호는 본인이 기억해야 함** — 비밀번호 찾기는 다음 단계에 추가됨.
+
+---
+
+## 4. 핵심 테스트 동선 (다 같이 해보기)
+
+### A. 글 작성 (현장에서)
+1. 하단 **촬영** 탭 → 위치 권한 확인
+2. 사진 선택 / 촬영 → 캡션 입력
+3. 게시
+4. 다른 사람들에게 카톡으로 "올렸어 들어와봐!" 공유
+
+### B. 피드 / 검색
+- 다른 친구가 올린 글이 보이는지
+- 검색 탭에서 핸들 / 장소명으로 찾기
+
+### C. 지도
+- 핀이 잘 찍히는지
+- 본인 위치 근처에 다른 사람 글이 보이는지
+
+### D. 프로필
+- 프로필 사진 / 자기소개 수정
+- 다른 친구 팔로우
+
+### E. 회상 (Recall)
+- 홈 헤더 **시계 아이콘** 누르기
+- 지금은 가입한 지 얼마 안 돼서 "작년 오늘"이 비어있음 (정상)
+
+---
+
+## 5. 피드백 양식
+
+- 발견한 버그 / 어색한 부분 / 안 되는 동선
+- 가능하면 스크린샷 1장 + 한 줄 설명
+- 디스코드 #happened 채널 또는 카톡으로
+
+**예시 좋은 피드백**:
+> "회원가입 후 첫 화면에서 위치 권한 거부하니까 흰 화면 됨. 아이폰 사파리. 17.x"
+
+**예시 보통 피드백**:
+> "안 됨"
+
+---
+
+## 6. 알아둘 한계 (지금 단계)
+
+- ngrok URL이 **Mac Mini 재시작 시 바뀔 수 있음**. 바뀌면 새 URL을 공유해주겠음
+- 비밀번호 재설정 화면은 다음 단계에서 추가됨
+- 푸시 알림은 네이티브 앱(앱스토어 단계)에서 동작 — 지금 웹은 토글만 모양
+- 광고 / 결제 등 운영 기능은 모두 미연결
+
+---
+
+화이팅 🐱

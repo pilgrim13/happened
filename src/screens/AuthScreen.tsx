@@ -16,20 +16,7 @@ type Props = {
   onBack: () => void;
 };
 
-const DEFAULT_TEST_EMAIL = 'test@happened.dev';
-const DEFAULT_TEST_PASSWORD = 'happened-test-1';
 const LAST_EMAIL_KEY = 'happened-last-email';
-
-function createDefaultAccountSeed() {
-  const suffix = Date.now().toString().slice(-5);
-
-  return {
-    email: `friend${suffix}@happened.test`,
-    displayName: 'Friend',
-    handle: `friend${suffix}`,
-    password: DEFAULT_TEST_PASSWORD,
-  };
-}
 
 function readLastEmail() {
   if (Platform.OS !== 'web' || typeof window === 'undefined') {
@@ -49,24 +36,22 @@ function rememberEmail(email: string) {
 
 function getDefaultLoginInput() {
   const lastEmail = readLastEmail();
-  const loginEmail = lastEmail ?? DEFAULT_TEST_EMAIL;
 
   return {
-    email: loginEmail,
-    password: loginEmail === DEFAULT_TEST_EMAIL ? DEFAULT_TEST_PASSWORD : '',
+    email: lastEmail ?? '',
+    password: '',
   };
 }
 
 export function AuthScreen({ initialMode = 'register', onComplete, onBack }: Props) {
   const insets = useSafeAreaInsets();
   const { language, t } = useI18n();
-  const defaultAccount = createDefaultAccountSeed();
   const defaultLogin = getDefaultLoginInput();
   const [mode, setMode] = useState<'register' | 'login'>(initialMode);
-  const [email, setEmail] = useState(() => (initialMode === 'login' ? defaultLogin.email : defaultAccount.email));
-  const [displayName, setDisplayName] = useState(defaultAccount.displayName);
-  const [handle, setHandle] = useState(defaultAccount.handle);
-  const [password, setPassword] = useState(initialMode === 'login' ? defaultLogin.password : defaultAccount.password);
+  const [email, setEmail] = useState(() => (initialMode === 'login' ? defaultLogin.email : ''));
+  const [displayName, setDisplayName] = useState('');
+  const [handle, setHandle] = useState('');
+  const [password, setPassword] = useState(initialMode === 'login' ? defaultLogin.password : '');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
@@ -110,7 +95,7 @@ export function AuthScreen({ initialMode = 'register', onComplete, onBack }: Pro
       email: `friend${suffix}@happened.test`,
       displayName: `Friend ${suffix.slice(-3)}`,
       handle: `friend${suffix}`,
-      password: DEFAULT_TEST_PASSWORD,
+      password: `quick-${suffix}`,
     };
 
     setEmail(input.email);
@@ -164,11 +149,10 @@ export function AuthScreen({ initialMode = 'register', onComplete, onBack }: Pro
                 setEmail(loginInput.email);
                 setPassword(loginInput.password);
               } else {
-                const nextAccount = createDefaultAccountSeed();
-                setEmail(nextAccount.email);
-                setDisplayName(nextAccount.displayName);
-                setHandle(nextAccount.handle);
-                setPassword(nextAccount.password);
+                setEmail('');
+                setDisplayName('');
+                setHandle('');
+                setPassword('');
               }
             }}
             disabled={busy}
