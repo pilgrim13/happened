@@ -117,7 +117,7 @@ export const authRegisterRequestSchema = z.object({
     .trim()
     .min(2)
     .max(32)
-    .regex(/^[a-zA-Z0-9_.]+$/),
+    .regex(/^[\p{L}\p{N}_.]+$/u, '닉네임은 한글/영문/숫자/언더스코어/점만 사용 가능합니다.'),
   // Add a refined password schema for register
   password: z.string().min(8).max(200).refine(
     (v) => /[A-Za-z]/.test(v) && /\d/.test(v) || v.length >= 12,

@@ -140,7 +140,20 @@ async function requestApi<T>(path: string, init?: RequestInit, sessionToken?: st
   const body = await response.json();
 
   if (!response.ok) {
-    const message = typeof body?.message === 'string' ? body.message : `Happened API request failed with ${response.status}.`;
+    let message = typeof body?.message === 'string' ? body.message : `Happened API request failed with ${response.status}.`;
+    if (Array.isArray(body?.issues) && body.issues.length > 0) {
+      const details = body.issues
+        .map((issue: { path?: string; message?: string }) => {
+          const field = issue.path ?? '';
+          const detail = issue.message ?? '';
+          return field ? `${field}: ${detail}` : detail;
+        })
+        .filter(Boolean)
+        .join(' / ');
+      if (details) {
+        message = `${message} (${details})`;
+      }
+    }
     throw new Error(message);
   }
 
