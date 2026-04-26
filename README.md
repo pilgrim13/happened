@@ -1,5 +1,7 @@
 # Happened
 
+[![CI](https://github.com/pilgrim13/happened/actions/workflows/ci.yml/badge.svg)](https://github.com/pilgrim13/happened/actions/workflows/ci.yml)
+
 Happened is a location-locked memory app: moments left at a place reopen when people return to that place. The first product surface is an immersive vertical feed, but every core interaction is anchored to place, check-in, unlock radius, and revisit recall.
 
 ## Current Stack

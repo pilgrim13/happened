@@ -2,6 +2,7 @@ import { StatusBar } from 'expo-status-bar';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 
+import { ErrorBoundary } from './src/components/ErrorBoundary';
 import { NoticeOverlay } from './src/components/NoticeOverlay';
 import { AppDataProvider } from './src/contexts/AppDataContext';
 import { CaptureProvider } from './src/contexts/CaptureContext';
@@ -24,6 +25,7 @@ function AppShell() {
 
 export default function App() {
   return (
+    <ErrorBoundary>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
         <I18nProvider>
@@ -39,5 +41,6 @@ export default function App() {
         </I18nProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
+    </ErrorBoundary>
   );
 }

@@ -12,6 +12,7 @@ export type ApiConfig = {
   databaseUrl: string | null;
   corsOrigin: boolean | string | string[];
   logRequests: boolean;
+  logLevel: string;
   appPublicUrl: string;
   devTestPassword: string;
   rateLimit: {
@@ -37,6 +38,7 @@ const envSchema = z.object({
   NODE_ENV: z.string().default('development'),
   API_CORS_ORIGIN: z.string().optional(),
   API_LOG_REQUESTS: z.string().optional(),
+  LOG_LEVEL: z.string().optional(),
   DATABASE_URL: z.string().optional(),
   APP_PUBLIC_URL: z.string().optional(),
   DEV_TEST_PASSWORD: z.string().optional(),
@@ -83,6 +85,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     databaseUrl: e.DATABASE_URL ?? null,
     corsOrigin: parseCorsOrigin(e.API_CORS_ORIGIN, isProd),
     logRequests: e.API_LOG_REQUESTS === '1' || !isProd,
+    logLevel: e.LOG_LEVEL ?? (isProd ? 'info' : 'debug'),
     appPublicUrl: e.APP_PUBLIC_URL ?? 'http://localhost:8081',
     devTestPassword: e.DEV_TEST_PASSWORD ?? 'happened-test-1',
     rateLimit: {

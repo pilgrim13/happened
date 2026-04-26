@@ -76,10 +76,10 @@ function buildLoggerOptions(config: ApiConfig) {
     'token',
   ];
   if (config.isProd) {
-    return { level: 'info', redact: { paths: redactPaths, censor: '[REDACTED]' } };
+    return { level: config.logLevel, redact: { paths: redactPaths, censor: '[REDACTED]' } };
   }
   return {
-    level: 'debug',
+    level: config.logLevel,
     redact: { paths: redactPaths, censor: '[REDACTED]' },
     transport: {
       target: 'pino-pretty',
@@ -103,6 +103,21 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   // x-request-id reflection
   app.addHook('onRequest', async (request, reply) => {
     reply.header('x-request-id', request.id);
+  });
+
+  // 인증된 요청이면 userId를 로그 컨텍스트에 포함
+  app.addHook('preValidation', async (request) => {
+    const auth = request.headers.authorization;
+    if (auth) {
+      try {
+        const session = await repository.getSession(auth);
+        if (session) {
+          request.log = request.log.child({ userId: session.user.id });
+        }
+      } catch {
+        // 로깅 목적 실패는 무시
+      }
+    }
   });
 
   // Helmet (relax CSP in dev so /uploads/preview works).
