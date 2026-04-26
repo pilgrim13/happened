@@ -5,6 +5,7 @@ import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } fr
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MediaRenderer } from '../components/MediaRenderer';
+import { ScreenState } from '../components/ScreenState';
 import { feedModes, memoryPosts } from '../data/happened';
 import { localizePlaceName, localizeRecallLabel, localizeTimeLabel, translateFeedMode, useI18n } from '../i18n';
 import { colors, fonts, radius } from '../theme/tokens';
@@ -316,10 +317,11 @@ export function HomeScreen({
           </View>
         }
         ListEmptyComponent={
-          <View style={styles.emptyCard}>
-            <Text style={styles.emptyTitle}>{t('home.noPosts')}</Text>
-            <Text style={styles.emptyText}>{query ? t('home.noSearch') : t('home.emptyFeed')}</Text>
-          </View>
+          <ScreenState
+            variant="empty"
+            title={t('home.noPosts')}
+            message={query ? t('home.noSearch') : t('home.emptyFeed')}
+          />
         }
         refreshing={refreshing}
         onRefresh={onRefresh ? refreshFeed : undefined}
@@ -1190,29 +1192,5 @@ const styles = StyleSheet.create({
     fontWeight: '700',
     marginTop: 2,
   },
-  emptyCard: {
-    minHeight: 180,
-    borderRadius: 24,
-    backgroundColor: colors.setlogPaper,
-    borderColor: colors.setlogLine,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-    padding: 18,
-  },
-  emptyTitle: {
-    color: colors.setlogInk,
-    fontFamily: fonts.display,
-    fontSize: 20,
-    fontWeight: '900',
-  },
-  emptyText: {
-    color: colors.setlogMuted,
-    fontFamily: fonts.body,
-    fontSize: 13,
-    lineHeight: 18,
-    fontWeight: '700',
-    textAlign: 'center',
-    marginTop: 6,
-  },
 });
+

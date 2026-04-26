@@ -8,7 +8,8 @@
 | 2026-04-26 | docs 갱신 (dev-env, local-vs-prod, api.md 신규) | 145s | 19 | 0.014K | 10K | 418K | **$0.416** | ✅ |
 | | **Sprint 1 합계 (S3 sprint + docs)** | | | | | | **$0.682** | |
 | 2026-04-26 | Sprint 2 (Pino + ErrorBoundary + CI) | 194s | 26 | 0.023K | 11K | 792K | **$0.639** | ✅ |
-| | **누적 합계** | | | | | | **$1.321** | |
+| 2026-04-26 | Sprint 3 (PostGIS geog + GIST + ST_DWithin) | ~5min | ~40 | 0.029K | 15K | 1.07M | **$0.847** | ✅ |
+| | **누적 합계** | | | | | | **$2.168** | |
 
 ## Sprint 정의
 
