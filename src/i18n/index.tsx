@@ -129,6 +129,8 @@ const translations = {
     'permissions.webLocation': 'Web preview will continue with a development location.',
     'permissions.locationDenied': 'Allow Location in device settings.',
     'permissions.cameraDenied': 'Camera permission was not granted.',
+    'permissions.notificationsDenied': 'Notifications were not enabled.',
+    'permissions.notificationsWeb': 'Push notifications are unavailable on web. They will work in the native app.',
     'permissions.photosDenied': 'Photo access was not granted.',
     'permissions.requestFailed': 'Permission request failed.',
 
@@ -397,6 +399,8 @@ const translations = {
     'permissions.webLocation': '웹 미리보기에서는 개발용 위치로 진행합니다.',
     'permissions.locationDenied': '기기 설정에서 위치를 허용하세요.',
     'permissions.cameraDenied': '카메라 권한이 허용되지 않았습니다.',
+    'permissions.notificationsDenied': '알림이 켜지지 않았습니다.',
+    'permissions.notificationsWeb': '웹에서는 푸시 알림을 켤 수 없습니다. 네이티브 앱에서 동작합니다.',
     'permissions.photosDenied': '사진 접근이 허용되지 않았습니다.',
     'permissions.requestFailed': '권한 요청에 실패했습니다.',
 

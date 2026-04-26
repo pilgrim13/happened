@@ -3,7 +3,7 @@ import * as Location from 'expo-location';
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, Camera, Check, Images, MapPin } from 'lucide-react-native';
 import { useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { usePushRegistration } from '../hooks/usePushRegistration';
@@ -66,8 +66,12 @@ export function PermissionsScreen({ onComplete }: Props) {
       }
 
       if (id === 'notifications') {
+        if (Platform.OS === 'web') {
+          setPermissionState(id, false, t('permissions.notificationsWeb'));
+          return;
+        }
         const registered = await registerPush();
-        setPermissionState(id, registered, registered ? undefined : t('permissions.cameraDenied'));
+        setPermissionState(id, registered, registered ? undefined : t('permissions.notificationsDenied'));
         return;
       }
     } catch {
