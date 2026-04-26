@@ -21,4 +21,5 @@ export type RootStackParamList = {
   PlaceDetail: { placeName: string };
   PostDetail: { postId: string };
   UserProfile: { handle: string };
+  Recall: undefined;
 };

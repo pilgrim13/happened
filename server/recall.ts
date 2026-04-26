@@ -12,6 +12,11 @@ export type RecallEvent = {
   createdAt: string;
 };
 
+export type RecallFeedItem = RecallEvent & {
+  placeName: string | null;
+  mediaUrl: string | null;
+};
+
 type DbRecallEventRow = {
   id: string;
   kind: string;
@@ -100,4 +105,17 @@ export async function generateAnniversaryRecalls(
   return { created, skipped };
 }
 
-export { rowToRecallEvent, type DbRecallEventRow };
+type DbRecallFeedRow = DbRecallEventRow & {
+  place_name: string | null;
+  media_url: string | null;
+};
+
+export function rowToRecallFeedItem(row: DbRecallFeedRow): RecallFeedItem {
+  return {
+    ...rowToRecallEvent(row),
+    placeName: row.place_name ?? null,
+    mediaUrl: row.media_url ?? null,
+  };
+}
+
+export { rowToRecallEvent, type DbRecallEventRow, type DbRecallFeedRow };

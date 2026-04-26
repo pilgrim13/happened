@@ -1,5 +1,5 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bell, Bookmark, Camera, ChevronLeft, ChevronRight, Heart, Lock, MapPin, MessageCircle, MoreHorizontal, Plus, RadioTower, RefreshCw, Search, Send } from 'lucide-react-native';
+import { Bell, Bookmark, Camera, ChevronLeft, ChevronRight, Clock, Heart, Lock, MapPin, MessageCircle, MoreHorizontal, Plus, RadioTower, RefreshCw, Search, Send } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
 import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -28,6 +28,8 @@ type HomeScreenProps = {
   onSearch?: (query: string) => Promise<SearchResults>;
   onOpenPost?: (postId: string) => void;
   onOpenProfile?: (handle: string) => void;
+  recallCount?: number;
+  onOpenRecall?: () => void;
 };
 
 function formatCount(value: number) {
@@ -118,6 +120,8 @@ export function HomeScreen({
   onSearch,
   onOpenPost,
   onOpenProfile,
+  recallCount = 0,
+  onOpenRecall,
 }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { language, t } = useI18n();
@@ -203,6 +207,16 @@ export function HomeScreen({
                 <Text style={styles.tagline}>{t('home.tagline')}</Text>
               </View>
               <View style={styles.headerActions}>
+                {onOpenRecall ? (
+                  <Pressable style={styles.headerButton} onPress={onOpenRecall}>
+                    <Clock color={colors.setlogInk} size={20} strokeWidth={2.4} />
+                    {recallCount > 0 ? (
+                      <View style={styles.unreadBadge}>
+                        <Text style={styles.unreadBadgeText}>{recallCount > 9 ? '9+' : recallCount}</Text>
+                      </View>
+                    ) : null}
+                  </Pressable>
+                ) : null}
                 <Pressable style={[styles.headerButton, searchOpen && styles.headerButtonActive]} onPress={() => setSearchOpen((current) => !current)}>
                   <Search color={colors.setlogInk} size={20} strokeWidth={2.4} />
                 </Pressable>

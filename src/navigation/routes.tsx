@@ -8,6 +8,7 @@ import { PermissionsScreen } from '../screens/PermissionsScreen';
 import { TutorialScreen } from '../screens/TutorialScreen';
 import { PlaceDetailScreen } from '../screens/PlaceDetailScreen';
 import { PostDetailScreen } from '../screens/PostDetailScreen';
+import { RecallScreen } from '../screens/RecallScreen';
 import { UserProfileScreen } from '../screens/UserProfileScreen';
 
 import { useSession } from '../contexts/SessionContext';
@@ -107,6 +108,16 @@ export function PostDetailRoute({ navigation, route }: PostDetailProps) {
         await performPostAction(id, action, input);
       }}
       onNotice={showNotice}
+    />
+  );
+}
+
+type RecallProps = NativeStackScreenProps<RootStackParamList, 'Recall'>;
+export function RecallRoute({ navigation }: RecallProps) {
+  return (
+    <RecallScreen
+      onBack={() => navigation.goBack()}
+      onOpenPost={(postId) => navigation.navigate('PostDetail', { postId })}
     />
   );
 }

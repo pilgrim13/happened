@@ -25,8 +25,9 @@ export const linking: LinkingOptions<RootStackParamList> = {
         },
       },
       PlaceDetail: 'place/:placeName',
-      PostDetail: 'post/:postId',
+      PostDetail: 'p/:postId',
       UserProfile: 'u/:handle',
+      Recall: 'recall',
     },
   },
 };

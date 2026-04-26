@@ -1,3 +1,4 @@
+import * as AppleAuthentication from 'expo-apple-authentication';
 import { LinearGradient } from 'expo-linear-gradient';
 import { LogIn, Sparkles } from 'lucide-react-native';
 import { useState } from 'react';
@@ -5,7 +6,7 @@ import { Alert, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, Vi
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { translateServerMessage, useI18n } from '../i18n';
-import { loginAccount, registerAccount } from '../services/happenedApi';
+import { loginAccount, loginWithApple, registerAccount } from '../services/happenedApi';
 import { colors, fonts, radius } from '../theme/tokens';
 import type { AuthSession } from '../types/happened';
 
@@ -197,17 +198,33 @@ export function AuthScreen({ initialMode = 'register', onComplete, onBack }: Pro
           >
             <Text style={styles.oauthButtonText}>{t('auth.continueWithGoogle')}</Text>
           </Pressable>
-          {Platform.OS === 'ios' || Platform.OS === 'web' ? (
+          {Platform.OS === 'ios' ? (
             <Pressable
               accessibilityRole="button"
               style={[styles.oauthButton, styles.oauthButtonDark]}
-              onPress={() => {
-                // TODO(S2/S3): wire up Apple Sign-In via expo-apple-authentication.
-                // - Use AppleAuthentication.signInAsync({ requestedScopes: [...] })
-                // - Exchange identityToken with backend /auth/oauth/apple
-                // - Use EXPO_PUBLIC_APPLE_SERVICES_ID for web fallback
-                Alert.alert('Coming soon', t('auth.oauthComingSoon'));
+              onPress={async () => {
+                try {
+                  const credential = await AppleAuthentication.signInAsync({
+                    requestedScopes: [
+                      AppleAuthentication.AppleAuthenticationScope.FULL_NAME,
+                      AppleAuthentication.AppleAuthenticationScope.EMAIL,
+                    ],
+                  });
+                  if (!credential.identityToken) {
+                    Alert.alert('오류', 'Apple 로그인 정보를 받지 못했어요.');
+                    return;
+                  }
+                  const session = await loginWithApple(credential.identityToken, credential.fullName);
+                  onComplete(session);
+                } catch (err: any) {
+                  if (err?.code === 'ERR_REQUEST_CANCELED') {
+                    return; // 사용자가 취소 — 무시
+                  }
+                  const message = err instanceof Error ? err.message : 'Apple 로그인에 실패했어요.';
+                  setError(message);
+                }
               }}
+              disabled={busy}
             >
               <Text style={[styles.oauthButtonText, styles.oauthButtonTextLight]}>
                 {t('auth.continueWithApple')}

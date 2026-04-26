@@ -172,6 +172,17 @@ export const recallParamsSchema = z.object({
   id: z.string().min(1),
 });
 
+export const appleAuthSchema = z.object({
+  identityToken: z.string().min(1).max(4096),
+  fullName: z
+    .object({
+      givenName: z.string().max(80).nullable().optional(),
+      familyName: z.string().max(80).nullable().optional(),
+    })
+    .nullable()
+    .optional(),
+});
+
 export type FeedModeInput = z.infer<typeof feedModeSchema>;
 export type PostActionRequest = z.infer<typeof postActionRequestSchema>;
 export type CheckInRequest = z.infer<typeof checkInRequestSchema>;

@@ -8,6 +8,7 @@ import {
   PermissionsRoute,
   PlaceDetailRoute,
   PostDetailRoute,
+  RecallRoute,
   TutorialRoute,
   UserProfileRoute,
 } from './routes';
@@ -71,6 +72,11 @@ export function RootNavigator() {
             <Stack.Screen
               name="UserProfile"
               component={UserProfileRoute}
+              options={{ presentation: 'modal' }}
+            />
+            <Stack.Screen
+              name="Recall"
+              component={RecallRoute}
               options={{ presentation: 'modal' }}
             />
           </>

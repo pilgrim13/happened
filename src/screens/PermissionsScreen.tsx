@@ -6,6 +6,7 @@ import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
+import { usePushRegistration } from '../hooks/usePushRegistration';
 import { useI18n } from '../i18n';
 import { colors, fonts, radius } from '../theme/tokens';
 
@@ -25,6 +26,7 @@ type PermissionId = (typeof permissionItems)[number]['id'];
 export function PermissionsScreen({ onComplete }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
+  const { register: registerPush, isRegistered: pushRegistered } = usePushRegistration();
   const [granted, setGranted] = useState<Record<PermissionId, boolean>>({
     location: false,
     camera: false,
@@ -60,6 +62,12 @@ export function PermissionsScreen({ onComplete }: Props) {
       if (id === 'photos') {
         const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
         setPermissionState(id, permission.granted, permission.granted ? undefined : t('permissions.photosDenied'));
+        return;
+      }
+
+      if (id === 'notifications') {
+        const registered = await registerPush();
+        setPermissionState(id, registered, registered ? undefined : t('permissions.cameraDenied'));
         return;
       }
     } catch {
@@ -99,18 +107,28 @@ export function PermissionsScreen({ onComplete }: Props) {
 
         <View style={styles.list}>
           {permissionItems.filter((item) => item.id !== 'location').map(({ id, titleKey, copyKey, Icon }) => (
-            <View key={id} style={styles.permissionRow}>
-              <View style={styles.permissionIcon}>
-                <Icon color={colors.setlogInk} size={19} />
+            <Pressable
+              key={id}
+              style={[styles.permissionRow, (granted[id] || (id === 'notifications' && pushRegistered)) && styles.permissionRowActive]}
+              onPress={() => requestPermission(id)}
+            >
+              <View style={[styles.permissionIcon, (granted[id] || (id === 'notifications' && pushRegistered)) && styles.permissionIconActive]}>
+                {(granted[id] || (id === 'notifications' && pushRegistered)) ? (
+                  <Check color={colors.setlogInk} size={19} strokeWidth={3} />
+                ) : (
+                  <Icon color={colors.setlogInk} size={19} />
+                )}
               </View>
               <View style={styles.permissionCopy}>
                 <Text style={styles.permissionTitle}>{t(titleKey)}</Text>
-                <Text style={styles.permissionMeta}>{t(copyKey)}</Text>
+                <Text style={styles.permissionMeta}>{notes[id] ?? t(copyKey)}</Text>
               </View>
-              <View style={styles.laterPill}>
-                <Text style={styles.laterText}>{t('permissions.later')}</Text>
-              </View>
-            </View>
+              {!(granted[id] || (id === 'notifications' && pushRegistered)) ? (
+                <View style={styles.laterPill}>
+                  <Text style={styles.laterText}>{t('permissions.later')}</Text>
+                </View>
+              ) : null}
+            </Pressable>
           ))}
         </View>
 

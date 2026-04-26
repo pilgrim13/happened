@@ -36,6 +36,7 @@ import {
   pushRegisterSchema,
   pushRevokeSchema,
   recallParamsSchema,
+  appleAuthSchema,
 } from './schemas';
 
 const ALLOWED_PHOTO_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
@@ -510,6 +511,32 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   });
 
   // ─── 푸시 토큰 등록/폐기 ────────────────────────────────────────────────────
+
+  // ─── Apple Sign-In ───────────────────────────────────────────────────────────
+
+  app.post('/v1/auth/apple', authRateLimit as any, async (request, reply) => {
+    const body = appleAuthSchema.parse(request.body);
+    // TODO: Apple JWT signature 검증 필요 (다음 PR — apple-signin-auth 라이브러리)
+    // 현재는 payload decode 후 sub(Apple user ID)만 추출
+    const parts = body.identityToken.split('.');
+    if (parts.length !== 3) {
+      return reply.status(400).send({ error: 'bad_request', message: 'Invalid Apple identity token format.' });
+    }
+    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8')) as { sub?: string; email?: string };
+    const appleUserId = payload.sub;
+    if (!appleUserId) {
+      return reply.status(400).send({ error: 'bad_request', message: 'Apple identity token missing sub claim.' });
+    }
+    const displayName = [body.fullName?.givenName, body.fullName?.familyName].filter(Boolean).join(' ') || null;
+    const session = await repository.loginOrRegisterAppleUser({
+      appleUserId,
+      email: payload.email ?? null,
+      displayName,
+      userAgent: request.headers['user-agent'] ?? null,
+      ip: request.ip,
+    });
+    return reply.status(200).send({ data: session });
+  });
 
   app.post('/v1/push/register', async (request, reply) => {
     const body = pushRegisterSchema.parse(request.body);

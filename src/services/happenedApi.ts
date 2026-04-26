@@ -375,6 +375,55 @@ export async function issueCheckInToken(placeName: string, input?: { distanceMet
   return response.data;
 }
 
+export type RecallFeedItem = {
+  id: string;
+  kind: 'anniversary' | 'proximity';
+  sourcePostId: string | null;
+  placeId: string | null;
+  scheduledFor: string;
+  deliveredAt: string | null;
+  createdAt: string;
+  placeName: string | null;
+  mediaUrl: string | null;
+};
+
+export async function fetchRecallFeed(sessionToken?: string | null): Promise<RecallFeedItem[]> {
+  const response = await requestApi<ApiEnvelope<RecallFeedItem[]>>('/v1/recall/feed', undefined, sessionToken);
+  return response.data.map((item) => ({
+    ...item,
+    mediaUrl: item.mediaUrl ? absolutizeUrl(item.mediaUrl) ?? item.mediaUrl : null,
+  }));
+}
+
+export async function dismissRecallEvent(id: string, sessionToken?: string | null): Promise<void> {
+  await requestApi<ApiEnvelope<{ ok: boolean }>>(`/v1/recall/${encodeURIComponent(id)}/dismiss`, { method: 'POST' }, sessionToken);
+}
+
+export async function registerPushToken(token: string, platform: 'ios' | 'android' | 'web', sessionToken?: string | null): Promise<void> {
+  await requestApi<ApiEnvelope<{ ok: boolean }>>('/v1/push/register', {
+    method: 'POST',
+    body: JSON.stringify({ token, platform }),
+  }, sessionToken);
+}
+
+export async function revokePushToken(token: string, sessionToken?: string | null): Promise<void> {
+  await requestApi<ApiEnvelope<{ ok: boolean }>>('/v1/push/register', {
+    method: 'DELETE',
+    body: JSON.stringify({ token }),
+  }, sessionToken);
+}
+
+export async function loginWithApple(identityToken: string, fullName?: { givenName?: string | null; familyName?: string | null } | null): Promise<AuthSession> {
+  const response = await requestApi<ApiEnvelope<AuthSession>>('/v1/auth/apple', {
+    method: 'POST',
+    body: JSON.stringify({ identityToken, fullName }),
+  });
+  return {
+    ...response.data,
+    user: absolutizeUser(response.data.user),
+  };
+}
+
 export async function createMemory(
   checkInTokenId: string,
   caption: string,

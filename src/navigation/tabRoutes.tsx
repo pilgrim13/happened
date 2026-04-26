@@ -13,6 +13,8 @@ import { useSession } from '../contexts/SessionContext';
 import { useNotice } from '../contexts/NoticeContext';
 import { useCapture } from '../contexts/CaptureContext';
 import { useSharePost } from '../hooks/useSharePost';
+import { useEffect, useState } from 'react';
+import { fetchRecallFeed } from '../services/happenedApi';
 import type { MainTabsParamList, RootStackParamList } from './types';
 
 type RootNav = NativeStackNavigationProp<RootStackParamList>;
@@ -28,10 +30,19 @@ export function HomeRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Home'
     search,
     refresh,
   } = useAppData();
+  const { session } = useSession();
   const { showNotice } = useNotice();
   const { captureAtPlace, startPostFromHome } = useCapture();
   const sharePost = useSharePost();
   const initialIndex = (_props.route.params?.initialPostIndex as number | undefined) ?? 0;
+  const [recallCount, setRecallCount] = useState(0);
+
+  useEffect(() => {
+    if (!session?.token) return;
+    fetchRecallFeed(session.token)
+      .then((items) => setRecallCount(items.length))
+      .catch(() => undefined);
+  }, [session?.token]);
 
   return (
     <HomeScreen
@@ -63,6 +74,8 @@ export function HomeRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Home'
       onOpenProfile={(handle) =>
         navigation.navigate('UserProfile', { handle: handle.replace(/^@+/, '') })
       }
+      recallCount={recallCount}
+      onOpenRecall={() => navigation.navigate('Recall')}
     />
   );
 }

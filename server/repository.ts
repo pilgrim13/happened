@@ -23,7 +23,7 @@ import type {
 } from '../src/types/happened';
 import { migrateDatabase, queryDatabase, withTransaction } from './db';
 import { LocalStore, type StorePostAction, type StoreUser } from './localStore';
-import { rowToRecallEvent, type DbRecallEventRow, type RecallEvent } from './recall';
+import { rowToRecallEvent, rowToRecallFeedItem, type DbRecallEventRow, type DbRecallFeedRow, type RecallEvent, type RecallFeedItem } from './recall';
 
 type RepositoryErrorCode =
   | 'auth_failed'
@@ -1352,8 +1352,11 @@ function createLocalRepository(store = new LocalStore()) {
     // push / recall — in-memory fallback
     registerPushToken: async (_sessionToken: string | null, _token: string, _platform: string) => ({ ok: true }),
     revokePushToken: async (_sessionToken: string | null, _token: string) => ({ ok: true }),
-    listRecallFeed: async (_sessionToken: string | null) => [] as RecallEvent[],
+    listRecallFeed: async (_sessionToken: string | null) => [] as RecallFeedItem[],
     dismissRecall: async (_sessionToken: string | null, _id: string) => ({ ok: true }),
+    loginOrRegisterAppleUser: async (_input: { appleUserId: string; email: string | null; displayName: string | null; userAgent: string | null; ip: string }) => {
+      throw new RepositoryError('auth_failed', 'Apple Sign-In not supported in local mode.');
+    },
   };
 }
 
@@ -2965,20 +2968,24 @@ function createPostgresRepository(databaseUrl: string) {
 
   // ─── Recall 피드 조회 / dismiss ──────────────────────────────────────────────
 
-  async function listRecallFeed(sessionToken: string | null): Promise<RecallEvent[]> {
+  async function listRecallFeed(sessionToken: string | null): Promise<RecallFeedItem[]> {
     const viewer = await getUserFromSession(sessionToken ?? null);
     if (!viewer) {
       throw new RepositoryError('auth_failed', 'Sign in to view recall feed.');
     }
-    const result = await queryDatabase<DbRecallEventRow>(databaseUrl, `
-      select id, kind, source_post_id, place_id, scheduled_for, delivered_at, created_at
-        from recall_events
-       where user_id = $1
-         and (delivered_at is null or delivered_at > now() - interval '7 days')
-       order by scheduled_for desc
+    const result = await queryDatabase<DbRecallFeedRow>(databaseUrl, `
+      select r.id, r.kind, r.source_post_id, r.place_id, r.scheduled_for, r.delivered_at, r.created_at,
+             coalesce(pl.name, mp.place_name) as place_name,
+             mp.media_url
+        from recall_events r
+        left join places pl on pl.id = r.place_id
+        left join memory_posts mp on mp.id = r.source_post_id
+       where r.user_id = $1
+         and (r.delivered_at is null or r.delivered_at > now() - interval '7 days')
+       order by r.scheduled_for desc
        limit 50
     `, [viewer.id]);
-    return result.rows.map(rowToRecallEvent);
+    return result.rows.map(rowToRecallFeedItem);
   }
 
   async function dismissRecall(sessionToken: string | null, id: string) {
@@ -2991,6 +2998,84 @@ function createPostgresRepository(databaseUrl: string) {
       where id = $1 and user_id = $2 and delivered_at is null
     `, [id, viewer.id]);
     return { ok: true };
+  }
+
+  // ─── Apple Sign-In ───────────────────────────────────────────────────────────
+
+  async function loginOrRegisterAppleUser(input: {
+    appleUserId: string;
+    email: string | null;
+    displayName: string | null;
+    userAgent: string | null;
+    ip: string;
+  }): Promise<AuthSession> {
+    const { appleUserId, email, displayName, userAgent, ip } = input;
+
+    // 기존 apple_user_id 로 사용자 조회
+    let existing = await queryDatabase<{ id: string }>(
+      databaseUrl,
+      `select id from users where apple_user_id = $1`,
+      [appleUserId],
+    );
+
+    let userId: string;
+    if (existing.rows.length > 0) {
+      userId = existing.rows[0].id;
+    } else {
+      // 신규 사용자 생성
+      const newId = randomUUID();
+      const handle = `apple${appleUserId.slice(-8).toLowerCase()}`;
+      const resolvedEmail = email ?? `${handle}@apple.private`;
+      const resolvedName = displayName ?? 'Apple User';
+      await queryDatabase(databaseUrl, `
+        insert into users (id, email, display_name, handle, apple_user_id, created_at)
+        values ($1, $2, $3, $4, $5, now())
+        on conflict (email) do update set apple_user_id = excluded.apple_user_id
+      `, [newId, resolvedEmail, resolvedName, handle, appleUserId]);
+      const found = await queryDatabase<{ id: string }>(
+        databaseUrl,
+        `select id from users where apple_user_id = $1`,
+        [appleUserId],
+      );
+      userId = found.rows[0].id;
+    }
+
+    // 세션 발급
+    const sessionId = randomUUID();
+    const expiresAt = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+    await queryDatabase(databaseUrl, `
+      insert into sessions (id, user_id, user_agent, ip, expires_at, created_at)
+      values ($1, $2, $3, $4, $5, now())
+    `, [sessionId, userId, userAgent, ip, expiresAt]);
+
+    const sessionRow = await queryDatabase<{
+      expires_at: Date | string;
+      user_id: string;
+      email: string;
+      display_name: string;
+      handle: string;
+      bio: string | null;
+      avatar_url: string | null;
+    }>(databaseUrl, `
+      select s.expires_at, u.id as user_id, u.email, u.display_name, u.handle, u.bio, u.avatar_url
+        from sessions s
+        join users u on u.id = s.user_id
+       where s.id = $1
+    `, [sessionId]);
+
+    const row = sessionRow.rows[0];
+    return {
+      token: sessionId,
+      expiresAt: new Date(row.expires_at).toISOString(),
+      user: {
+        id: row.user_id,
+        email: row.email,
+        displayName: row.display_name,
+        handle: row.handle,
+        bio: row.bio ?? undefined,
+        avatarUrl: row.avatar_url ?? undefined,
+      },
+    };
   }
 
   // PostGIS-backed nearby search. Uses ST_DWithin (uses GIST index) for filtering
@@ -3050,6 +3135,7 @@ function createPostgresRepository(databaseUrl: string) {
     revokePushToken,
     listRecallFeed,
     dismissRecall,
+    loginOrRegisterAppleUser,
   };
 }
 
