@@ -1,10 +1,14 @@
 import cors from '@fastify/cors';
+import helmet from '@fastify/helmet';
+import rateLimit from '@fastify/rate-limit';
 import Fastify from 'fastify';
 import { ZodError } from 'zod';
 
 import { getConfig, type ApiConfig } from './config';
 import { checkDatabase, closeDatabase } from './db';
 import { createMediaStorage } from './media';
+import { createMailer } from './mailer';
+import { createObjectStorage, mediaKey } from './storage';
 import { createRepository, RepositoryError } from './repository';
 import {
   authHeaderSchema,
@@ -12,6 +16,7 @@ import {
   authRegisterRequestSchema,
   checkInRequestSchema,
   feedQuerySchema,
+  cursorQuerySchema,
   memoryCreateRequestSchema,
   memoryUpdateRequestSchema,
   notificationReadRequestSchema,
@@ -19,11 +24,19 @@ import {
   postActionRequestSchema,
   postParamsSchema,
   placeParamsSchema,
+  presignRequestSchema,
+  passwordResetRequestSchema,
+  passwordResetConfirmSchema,
+  verifyEmailConfirmSchema,
+  sessionParamsSchema,
   profileUpdateRequestSchema,
   searchQuerySchema,
   nearbyQuerySchema,
   userParamsSchema,
 } from './schemas';
+
+const ALLOWED_PHOTO_MIMES = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+const ALLOWED_VIDEO_MIMES = new Set(['video/mp4', 'video/quicktime', 'video/webm']);
 
 function statusForRepositoryError(error: RepositoryError) {
   switch (error.code) {
@@ -52,24 +65,69 @@ function statusForRepositoryError(error: RepositoryError) {
   }
 }
 
+function buildLoggerOptions(config: ApiConfig) {
+  if (!config.logRequests) return false;
+  const redactPaths = [
+    'req.headers.authorization',
+    'req.headers.cookie',
+    'body.password',
+    'body.token',
+    'password',
+    'token',
+  ];
+  if (config.isProd) {
+    return { level: 'info', redact: { paths: redactPaths, censor: '[REDACTED]' } };
+  }
+  return {
+    level: 'debug',
+    redact: { paths: redactPaths, censor: '[REDACTED]' },
+    transport: {
+      target: 'pino-pretty',
+      options: { translateTime: 'HH:MM:ss.l', ignore: 'pid,hostname' },
+    },
+  };
+}
+
 export async function buildServer(config: ApiConfig = getConfig()) {
   const app = Fastify({
     bodyLimit: Math.max(80 * 1024 * 1024, config.media.maxBytes * 10),
-    logger: config.logRequests
-      ? {
-          redact: ['req.headers.authorization', 'body.password', 'password'],
-        }
-      : false,
+    logger: buildLoggerOptions(config) as any,
+    genReqId: () => `req_${Math.random().toString(36).slice(2, 10)}_${Date.now().toString(36)}`,
   });
+
   const repository = await createRepository(config.databaseUrl);
   const mediaStorage = createMediaStorage(config.media);
+  const objectStorage = config.storage ? createObjectStorage(config.storage) : null;
+  const mailer = config.mailer ? createMailer(config.mailer) : null;
+
+  // x-request-id reflection
+  app.addHook('onRequest', async (request, reply) => {
+    reply.header('x-request-id', request.id);
+  });
+
+  // Helmet (relax CSP in dev so /uploads/preview works).
+  await app.register(helmet, {
+    contentSecurityPolicy: config.isProd
+      ? undefined
+      : false,
+    crossOriginResourcePolicy: { policy: 'cross-origin' },
+  });
+
+  await app.register(rateLimit, {
+    global: true,
+    max: config.rateLimit.globalMax,
+    timeWindow: config.rateLimit.timeWindowMs,
+    allowList: (request) => request.url === '/health',
+    keyGenerator: (request) => request.ip,
+  });
 
   await app.register(cors, {
     origin: config.corsOrigin,
   });
 
-  app.setErrorHandler((error, _request, reply) => {
+  app.setErrorHandler((error, request, reply) => {
     if (error instanceof ZodError) {
+      request.log.warn({ issues: error.issues }, 'request validation failed');
       return reply.status(400).send({
         error: 'bad_request',
         message: 'Request validation failed.',
@@ -81,12 +139,19 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     }
 
     if (error instanceof RepositoryError) {
-      return reply.status(statusForRepositoryError(error)).send({
+      const status = statusForRepositoryError(error);
+      if (status >= 500) {
+        request.log.error({ err: error, code: error.code }, 'repository error');
+      } else {
+        request.log.info({ code: error.code }, 'repository error');
+      }
+      return reply.status(status).send({
         error: error.code,
         message: error.message,
       });
     }
 
+    request.log.error({ err: error }, 'unhandled error');
     return reply.send(error);
   });
 
@@ -102,44 +167,136 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     media: await mediaStorage.health(),
   }));
 
-  app.post('/v1/auth/register', async (request, reply) => {
-    const body = authRegisterRequestSchema.parse(request.body);
-    const session = await repository.registerUser(body);
+  // Auth endpoints have stricter rate limits.
+  const authRateLimit = {
+    config: {
+      rateLimit: { max: config.rateLimit.authMax, timeWindow: config.rateLimit.timeWindowMs },
+    },
+  };
 
-    return reply.status(201).send({
-      data: session,
+  app.post('/v1/auth/register', authRateLimit as any, async (request, reply) => {
+    const body = authRegisterRequestSchema.parse(request.body);
+    const session = await repository.registerUser({
+      ...body,
+      userAgent: request.headers['user-agent'] ?? null,
+      ip: request.ip,
     });
+    return reply.status(201).send({ data: session });
   });
 
-  app.post('/v1/auth/login', async (request) => {
+  app.post('/v1/auth/login', authRateLimit as any, async (request) => {
     const body = authLoginRequestSchema.parse(request.body);
-
     return {
-      data: await repository.loginUser(body),
+      data: await repository.loginUser({
+        ...body,
+        userAgent: request.headers['user-agent'] ?? null,
+        ip: request.ip,
+      }),
     };
+  });
+
+  app.post('/v1/auth/logout', authRateLimit as any, async (request) => {
+    const token = authHeaderSchema.parse(request.headers.authorization);
+    return { data: await repository.logoutSession(token) };
+  });
+
+  app.get('/v1/auth/sessions', async (request) => {
+    const token = authHeaderSchema.parse(request.headers.authorization);
+    return { data: await repository.listSessions(token) };
+  });
+
+  app.delete('/v1/auth/sessions/:id', async (request) => {
+    const params = sessionParamsSchema.parse(request.params);
+    const token = authHeaderSchema.parse(request.headers.authorization);
+    return { data: await repository.revokeSession(token, params.id) };
   });
 
   app.get('/v1/auth/session', async (request, reply) => {
     const token = authHeaderSchema.parse(request.headers.authorization);
     const session = await repository.getSession(token);
-
     if (!session) {
-      return reply.status(401).send({
-        error: 'auth_failed',
-        message: 'Session is missing or expired.',
-      });
+      return reply.status(401).send({ error: 'auth_failed', message: 'Session is missing or expired.' });
     }
+    return { data: session };
+  });
 
-    return {
-      data: session,
-    };
+  // Email verification
+  app.post('/v1/auth/verify-email/request', authRateLimit as any, async (request) => {
+    const token = authHeaderSchema.parse(request.headers.authorization);
+    const issued = await repository.requestEmailVerification(token);
+    if (mailer) {
+      const link = `${config.appPublicUrl}/verify-email?token=${encodeURIComponent(issued.token)}`;
+      try {
+        await mailer.sendVerificationEmail(issued.email, issued.token, link);
+      } catch (err) {
+        request.log.warn({ err }, 'failed to send verification email');
+      }
+    }
+    return { data: { ok: true, expiresAt: issued.expiresAt } };
+  });
+
+  app.post('/v1/auth/verify-email/confirm', authRateLimit as any, async (request) => {
+    const body = verifyEmailConfirmSchema.parse(request.body);
+    return { data: await repository.confirmEmailVerification(body.token) };
+  });
+
+  app.post('/v1/auth/password-reset/request', authRateLimit as any, async (request) => {
+    const body = passwordResetRequestSchema.parse(request.body);
+    const issued = await repository.requestPasswordReset(body.email);
+    if (mailer && issued.token) {
+      const link = `${config.appPublicUrl}/reset-password?token=${encodeURIComponent(issued.token)}`;
+      try {
+        await mailer.sendPasswordResetEmail(body.email, link);
+      } catch (err) {
+        request.log.warn({ err }, 'failed to send password reset email');
+      }
+    }
+    return { data: { ok: true } };
+  });
+
+  app.post('/v1/auth/password-reset/confirm', authRateLimit as any, async (request) => {
+    const body = passwordResetConfirmSchema.parse(request.body);
+    return { data: await repository.confirmPasswordReset(body.token, body.password) };
+  });
+
+  // Presigned upload
+  app.post('/v1/media/presign', async (request, reply) => {
+    if (!objectStorage) {
+      return reply.status(503).send({ error: 'storage_unavailable', message: 'Object storage is not configured.' });
+    }
+    const token = authHeaderSchema.parse(request.headers.authorization);
+    const session = await repository.getSession(token);
+    if (!session) {
+      return reply.status(401).send({ error: 'auth_failed', message: 'Authentication required.' });
+    }
+    const body = presignRequestSchema.parse(request.body);
+
+    const allowed = body.kind === 'photo' ? ALLOWED_PHOTO_MIMES : ALLOWED_VIDEO_MIMES;
+    if (!allowed.has(body.contentType.toLowerCase())) {
+      return reply.status(400).send({ error: 'unsupported_media', message: `Content type ${body.contentType} is not allowed.` });
+    }
+    const cap = body.kind === 'photo' ? config.media.photoMaxBytes : config.media.videoMaxBytes;
+    if (body.contentLength > cap) {
+      return reply.status(413).send({ error: 'payload_too_large', message: `Max ${cap} bytes for ${body.kind}.` });
+    }
+    const ext = body.ext || (body.contentType.split('/')[1] ?? 'bin');
+    // postId placeholder — uses a UUID for grouping, client supplies as "draft".
+    const draftPostId = `draft-${Math.random().toString(36).slice(2, 10)}`;
+    const key = mediaKey(session.user.id, draftPostId, ext);
+    const presigned = await objectStorage.createPresignedUploadUrl({
+      key,
+      contentType: body.contentType,
+      maxBytes: body.contentLength,
+      expiresInSeconds: 600,
+    });
+    request.log.info({ key, kind: body.kind, userId: session.user.id }, 'presigned upload issued');
+    return { data: { ...presigned, key } };
   });
 
   app.patch('/v1/me/profile', async (request) => {
     const body = profileUpdateRequestSchema.parse(request.body);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
     const avatar = body.avatarDataUrl ? await mediaStorage.saveDataUrl(body.avatarDataUrl, body.avatarFileName) : null;
-
     return {
       data: await repository.updateProfile({
         displayName: body.displayName,
@@ -154,26 +311,21 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   app.get('/v1/feed', async (request) => {
     const query = feedQuerySchema.parse(request.query);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
     return {
-      data: await repository.getFeed(query.mode, sessionToken),
+      data: await repository.getFeed(query.mode, sessionToken, { cursor: query.cursor ?? null, limit: query.limit }),
     };
   });
 
   app.get('/v1/search', async (request) => {
     const query = searchQuerySchema.parse(request.query);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.searchContent(query.q, sessionToken),
-    };
+    return { data: await repository.searchContent(query.q, sessionToken) };
   });
 
   app.post('/v1/posts/:postId/actions', async (request) => {
     const params = postParamsSchema.parse(request.params);
     const body = postActionRequestSchema.parse(request.body);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
     return {
       data: await repository.updatePostAction({
         postId: params.postId,
@@ -188,7 +340,6 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     const params = postParamsSchema.parse(request.params);
     const body = memoryUpdateRequestSchema.parse(request.body);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
     return {
       data: await repository.updateMemoryPost({
         postId: params.postId,
@@ -202,25 +353,18 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   app.delete('/v1/posts/:postId', async (request) => {
     const params = postParamsSchema.parse(request.params);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.deleteMemoryPost(params.postId, sessionToken),
-    };
+    return { data: await repository.deleteMemoryPost(params.postId, sessionToken) };
   });
 
   app.get('/v1/posts/:postId', async (request) => {
     const params = postParamsSchema.parse(request.params);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.getPostDetail(params.postId, sessionToken),
-    };
+    return { data: await repository.getPostDetail(params.postId, sessionToken) };
   });
 
   app.delete('/v1/posts/:postId/comments/:commentId', async (request) => {
     const params = commentParamsSchema.parse(request.params);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
     return {
       data: await repository.deleteComment({
         postId: params.postId,
@@ -233,71 +377,47 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   app.get('/v1/users/:handle', async (request) => {
     const params = userParamsSchema.parse(request.params);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.getProfile(params.handle, sessionToken),
-    };
+    return { data: await repository.getProfile(params.handle, sessionToken) };
   });
 
   app.get('/v1/users/:handle/connections', async (request) => {
     const params = userParamsSchema.parse(request.params);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.getConnections(params.handle, sessionToken),
-    };
+    return { data: await repository.getConnections(params.handle, sessionToken) };
   });
 
   app.post('/v1/users/:handle/follow', async (request) => {
     const params = userParamsSchema.parse(request.params);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.toggleFollow(params.handle, sessionToken),
-    };
+    return { data: await repository.toggleFollow(params.handle, sessionToken) };
   });
 
   app.post('/v1/users/:handle/block', async (request) => {
     const params = userParamsSchema.parse(request.params);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.toggleBlock(params.handle, sessionToken),
-    };
+    return { data: await repository.toggleBlock(params.handle, sessionToken) };
   });
 
   app.get('/v1/me/safety', async (request) => {
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.getSafetySummary(sessionToken),
-    };
+    return { data: await repository.getSafetySummary(sessionToken) };
   });
 
   app.get('/v1/notifications', async (request) => {
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.getNotifications(sessionToken),
-    };
+    return { data: await repository.getNotifications(sessionToken) };
   });
 
   app.post('/v1/notifications/read', async (request) => {
     const body = notificationReadRequestSchema.parse(request.body ?? {});
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-
-    return {
-      data: await repository.markNotificationsRead(sessionToken, body.notificationIds),
-    };
+    return { data: await repository.markNotificationsRead(sessionToken, body.notificationIds) };
   });
 
-  app.get('/v1/places', async () => ({
-    data: await repository.getPlaces(),
-  }));
+  app.get('/v1/places', async () => ({ data: await repository.getPlaces() }));
 
   app.get('/v1/places/nearby', async (request) => {
     const query = nearbyQuerySchema.parse(request.query);
-
     return {
       data: await repository.findNearbyPlaces({
         latitude: query.lat,
@@ -310,35 +430,57 @@ export async function buildServer(config: ApiConfig = getConfig()) {
 
   app.get('/v1/places/:placeKey', async (request) => {
     const params = placeParamsSchema.parse(request.params);
-
-    return {
-      data: await repository.getPlace(params.placeKey),
-    };
+    return { data: await repository.getPlace(params.placeKey) };
   });
 
-  app.get('/v1/timeline', async () => ({
-    data: await repository.getTimeline(),
-  }));
+  app.get('/v1/timeline', async () => ({ data: await repository.getTimeline() }));
 
   app.post('/v1/check-ins', async (request, reply) => {
     const body = checkInRequestSchema.parse(request.body);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
     const token = await repository.issueCheckIn({ ...body, sessionToken });
-
-    return reply.status(201).send({
-      data: token,
-    });
+    return reply.status(201).send({ data: token });
   });
 
   app.post('/v1/memories', async (request, reply) => {
     const body = memoryCreateRequestSchema.parse(request.body);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
+
+    // New flow: client supplies pre-uploaded mediaKeys (presigned PUT). We verify objects exist.
+    if (body.mediaKeys?.length) {
+      if (!objectStorage) {
+        return reply.status(503).send({ error: 'storage_unavailable', message: 'Object storage not configured.' });
+      }
+      const verified = await Promise.all(body.mediaKeys.map(async (k) => ({
+        key: k,
+        exists: await objectStorage.objectExists(k),
+        publicUrl: objectStorage.publicUrlFor(k),
+      })));
+      const missing = verified.filter((v) => !v.exists);
+      if (missing.length) {
+        return reply.status(400).send({ error: 'media_missing', message: 'Uploaded media not found in storage.', missing: missing.map((m) => m.key) });
+      }
+      const result = await repository.createMemory({
+        checkInTokenId: body.checkInTokenId,
+        caption: body.caption,
+        visibility: body.visibility,
+        mediaUrl: verified[0]?.publicUrl,
+        mediaUrls: verified.map((v) => v.publicUrl),
+        mediaKeys: verified.map((v) => v.key),
+        sessionToken,
+      });
+      return reply.status(201).send({ data: result });
+    }
+
+    // Legacy flow (deprecated): dataURL upload through the API.
     const requestedMedia = body.mediaItems?.length
       ? body.mediaItems
       : body.mediaDataUrl
         ? [{ mediaDataUrl: body.mediaDataUrl, mediaFileName: body.mediaFileName }]
         : [];
-    const savedMedia = await Promise.all(requestedMedia.map((item) => mediaStorage.saveDataUrl(item.mediaDataUrl, item.mediaFileName)));
+    const savedMedia = await Promise.all(
+      requestedMedia.map((item) => mediaStorage.saveDataUrl(item.mediaDataUrl, item.mediaFileName)),
+    );
     const result = await repository.createMemory({
       ...body,
       sessionToken,
@@ -346,9 +488,7 @@ export async function buildServer(config: ApiConfig = getConfig()) {
       mediaUrls: savedMedia.map((media) => media.url),
     });
 
-    return reply.status(201).send({
-      data: result,
-    });
+    return reply.status(201).send({ data: result });
   });
 
   app.get('/uploads/:fileName', async (request, reply) => {
@@ -357,37 +497,24 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     const media = await mediaStorage.read(fileName);
 
     if (!media) {
-      return reply.status(404).send({
-        error: 'not_found',
-        message: 'Media file was not found.',
-      });
+      return reply.status(404).send({ error: 'not_found', message: 'Media file was not found.' });
     }
 
     const range = request.headers.range;
     if (range) {
       const match = range.match(/^bytes=(\d*)-(\d*)$/);
-
       if (!match) {
-        return reply
-          .status(416)
-          .header('content-range', `bytes */${media.size}`)
-          .send();
+        return reply.status(416).header('content-range', `bytes */${media.size}`).send();
       }
-
       const [, rawStart, rawEnd] = match;
       const suffixLength = !rawStart && rawEnd ? Number.parseInt(rawEnd, 10) : null;
       const requestedStart = suffixLength ? media.size - suffixLength : rawStart ? Number.parseInt(rawStart, 10) : 0;
       const requestedEnd = suffixLength ? media.size - 1 : rawEnd ? Number.parseInt(rawEnd, 10) : media.size - 1;
       const start = Math.max(0, requestedStart);
       const end = Math.min(media.size - 1, requestedEnd);
-
       if (!Number.isFinite(start) || !Number.isFinite(end) || start > end || start >= media.size) {
-        return reply
-          .status(416)
-          .header('content-range', `bytes */${media.size}`)
-          .send();
+        return reply.status(416).header('content-range', `bytes */${media.size}`).send();
       }
-
       return reply
         .status(206)
         .header('content-type', media.mimeType)

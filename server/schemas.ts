@@ -6,7 +6,31 @@ export const memoryPostActionSchema = z.enum(['echo', 'save', 'reply', 'hide', '
 
 export const feedQuerySchema = z.object({
   mode: feedModeSchema.optional(),
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
 });
+
+export const cursorQuerySchema = z.object({
+  cursor: z.string().optional(),
+  limit: z.coerce.number().int().positive().max(100).optional(),
+});
+
+export const presignRequestSchema = z.object({
+  contentType: z.string().trim().min(1).max(120),
+  contentLength: z.coerce.number().int().positive().max(200 * 1024 * 1024),
+  kind: z.enum(['photo', 'video']).default('photo'),
+  ext: z.string().trim().max(8).optional(),
+});
+
+export const verifyEmailRequestSchema = z.object({});
+export const verifyEmailConfirmSchema = z.object({ token: z.string().min(8).max(200) });
+export const passwordResetRequestSchema = z.object({ email: z.string().trim().email().max(180) });
+export const passwordResetConfirmSchema = z.object({
+  token: z.string().min(8).max(200),
+  password: z.string().min(8).max(200),
+});
+
+export const sessionParamsSchema = z.object({ id: z.string().min(1) });
 
 export const searchQuerySchema = z.object({
   q: z.string().trim().min(1).max(120),
@@ -64,8 +88,9 @@ export const memoryCreateRequestSchema = z.object({
     .min(1)
     .max(6)
     .optional(),
-}).refine((value) => Boolean(value.mediaDataUrl || value.mediaItems?.length), {
-  message: 'At least one photo is required.',
+  mediaKeys: z.array(z.string().min(1).max(300)).min(1).max(6).optional(),
+}).refine((value) => Boolean(value.mediaDataUrl || value.mediaItems?.length || value.mediaKeys?.length), {
+  message: 'At least one photo (or mediaKey) is required.',
 });
 
 export const nearbyQuerySchema = z.object({
@@ -93,8 +118,12 @@ export const authRegisterRequestSchema = z.object({
     .min(2)
     .max(32)
     .regex(/^[a-zA-Z0-9_.]+$/),
-  password: z.string().min(8).max(200),
-});
+  // Add a refined password schema for register
+  password: z.string().min(8).max(200).refine(
+    (v) => /[A-Za-z]/.test(v) && /\d/.test(v) || v.length >= 12,
+    { message: 'Password must contain letters and numbers, or be 12+ characters.' },
+  ),
+}); 
 
 export const profileUpdateRequestSchema = z
   .object({

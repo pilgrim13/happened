@@ -1,4 +1,4 @@
-import { randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
+import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 
 import { memoryPosts, placeBubbles, timelineMonths } from '../src/data/happened';
 import { colors } from '../src/theme/tokens';
@@ -21,7 +21,7 @@ import type {
   UserLocation,
   Visibility,
 } from '../src/types/happened';
-import { migrateDatabase, queryDatabase } from './db';
+import { migrateDatabase, queryDatabase, withTransaction } from './db';
 import { LocalStore, type StorePostAction, type StoreUser } from './localStore';
 
 type RepositoryErrorCode =
@@ -107,7 +107,7 @@ const DEV_TEST_ACCOUNT = {
   displayName: 'Junn',
   handle: 'junn',
   bio: '서울 곳곳에서 다시 열리는 기억을 모으는 중.',
-  password: 'happened-test-1',
+  password: process.env.DEV_TEST_PASSWORD ?? 'happened-test-1',
 } as const;
 
 function toPublicUser(user: StoreUser) {
@@ -265,6 +265,21 @@ function toTokenResponse(token: CheckInToken): CheckInToken {
 
 function clampStat(value: number) {
   return Math.max(0, value);
+}
+
+function encodeCursor(value: { createdAt: string; id: string }): string {
+  return Buffer.from(JSON.stringify(value), 'utf8').toString('base64url');
+}
+
+function decodeCursor(value: string | null | undefined): { createdAt: string; id: string } | null {
+  if (!value) return null;
+  try {
+    const parsed = JSON.parse(Buffer.from(value, 'base64url').toString('utf8'));
+    if (typeof parsed?.createdAt === 'string' && typeof parsed?.id === 'string') return parsed;
+  } catch {
+    /* ignore */
+  }
+  return null;
 }
 
 function resolveScheduledVisibility(post: MemoryPost): Visibility {
@@ -552,7 +567,7 @@ function createLocalRepository(store = new LocalStore()) {
     };
   }
 
-  function getFeed(mode?: FeedMode, sessionToken?: string | null) {
+  function getFeed(mode?: FeedMode, sessionToken?: string | null, opts?: { cursor?: string | null; limit?: number }) {
     const user = getUserFromSession(sessionToken ?? null);
     const actorKey = getActorKey(user, sessionToken);
     const viewerActions = store.data.postActions.filter((action) => action.actorKey === actorKey);
@@ -563,10 +578,13 @@ function createLocalRepository(store = new LocalStore()) {
       ? store.data.posts.filter((post) => post.mode === mode)
       : store.data.posts;
 
-    return posts
+    const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
+    const filtered = posts
       .filter((post) => !hiddenPostIds.has(post.id))
       .filter((post) => !post.authorId || !mutedAuthorIds.has(post.authorId))
       .map((post) => withViewerState(post, viewerActions, blockedAuthorIds));
+    const items = filtered.slice(0, limit);
+    return { items, nextCursor: filtered.length > limit ? 'has-more' : null };
   }
 
   function updatePostAction({
@@ -1292,10 +1310,23 @@ function createLocalRepository(store = new LocalStore()) {
       }));
   }
 
+  // S3 sprint stubs for local repository — these features require Postgres.
+  function notImplementedLocal(): never {
+    throw new RepositoryError('not_implemented' as RepositoryErrorCode, 'Feature requires DATABASE_URL (Postgres).');
+  }
+
   return {
     registerUser,
     loginUser,
     getSession,
+    logoutSession: async (_t: string | null) => ({ revoked: 0 }),
+    listSessions: async (_t: string | null) => [] as Array<{ id: string; userAgent: string | null; ip: string | null; createdAt: string; lastSeenAt: string | null; expiresAt: string; isCurrent: boolean }>,
+    revokeSession: async (_t: string | null, _id: string) => ({ revoked: 0 }),
+    requestEmailVerification: async (_t: string | null): Promise<{ token: string; email: string; expiresAt: string }> => notImplementedLocal(),
+    confirmEmailVerification: async (_token: string): Promise<{ ok: true; userId: string }> => notImplementedLocal(),
+    requestPasswordReset: async (email: string) => ({ token: null as string | null, email, expiresAt: new Date().toISOString() }),
+    confirmPasswordReset: async (_t: string, _p: string): Promise<{ ok: true; userId: string }> => notImplementedLocal(),
+    attachPostMedia: async (_a: unknown) => undefined,
     updateProfile,
     getFeed,
     searchContent,
@@ -1599,23 +1630,25 @@ function createPostgresRepository(databaseUrl: string) {
       select users.*
       from sessions
       join users on users.id = sessions.user_id
-      where sessions.id = $1 and sessions.expires_at > now()
+      where sessions.id = $1 and sessions.expires_at > now() and sessions.revoked_at is null
     `, [sessionToken]);
 
     return result.rows[0] ? rowToUser(result.rows[0]) : null;
   }
 
-  async function createSession(user: StoreUser): Promise<AuthSession> {
+  async function createSession(user: StoreUser, meta?: { userAgent?: string | null; ip?: string | null }): Promise<AuthSession> {
     const session = {
       id: randomUUID(),
       userId: user.id,
       expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
     };
 
-    await queryDatabase(databaseUrl, 'insert into sessions (id, user_id, expires_at) values ($1, $2, $3)', [
+    await queryDatabase(databaseUrl, 'insert into sessions (id, user_id, expires_at, user_agent, ip, last_seen_at) values ($1, $2, $3, $4, $5, now())', [
       session.id,
       session.userId,
       session.expiresAt,
+      meta?.userAgent ?? null,
+      meta?.ip ?? null,
     ]);
 
     return {
@@ -1699,7 +1732,7 @@ function createPostgresRepository(databaseUrl: string) {
     };
   }
 
-  async function registerUser({ email, displayName, handle, password }: { email: string; displayName: string; handle: string; password: string }) {
+  async function registerUser({ email, displayName, handle, password, userAgent, ip }: { email: string; displayName: string; handle: string; password: string; userAgent?: string | null; ip?: string | null }) {
     const normalizedEmail = normalize(email);
     const normalizedHandle = handle.trim().replace(/^@/, '').toLowerCase();
     const existing = await queryDatabase<{ email: string; handle: string }>(databaseUrl, 'select email, handle from users where email = $1 or handle = $2', [
@@ -1731,10 +1764,10 @@ function createPostgresRepository(databaseUrl: string) {
       values ($1, $2, $3, $4, $5, $6, $7)
     `, [user.id, user.email, user.displayName, user.handle, user.passwordHash, user.passwordSalt, user.createdAt]);
 
-    return createSession(user);
+    return createSession(user, { userAgent: userAgent ?? null, ip: ip ?? null });
   }
 
-  async function loginUser({ email, password }: { email: string; password: string }) {
+  async function loginUser({ email, password, userAgent, ip }: { email: string; password: string; userAgent?: string | null; ip?: string | null }) {
     const result = await queryDatabase<DbUserRow>(databaseUrl, 'select * from users where email = $1', [normalize(email)]);
     const row = result.rows[0];
 
@@ -1742,7 +1775,119 @@ function createPostgresRepository(databaseUrl: string) {
       throw new RepositoryError('auth_failed', 'Email or password is incorrect.');
     }
 
-    return createSession(rowToUser(row));
+    return createSession(rowToUser(row), { userAgent: userAgent ?? null, ip: ip ?? null });
+  }
+
+  async function logoutSession(sessionToken: string | null) {
+    if (!sessionToken) return { revoked: 0 };
+    const r = await queryDatabase(databaseUrl, 'update sessions set revoked_at = now() where id = $1 and revoked_at is null', [sessionToken]);
+    return { revoked: r.rowCount ?? 0 };
+  }
+
+  async function listSessions(viewerToken: string | null) {
+    const viewer = await getUserFromSession(viewerToken);
+    if (!viewer) throw new RepositoryError('auth_failed', 'Authentication required.');
+    const r = await queryDatabase<{ id: string; user_agent: string | null; ip: string | null; created_at: Date | string; last_seen_at: Date | string | null; expires_at: Date | string }>(
+      databaseUrl,
+      'select id, user_agent, ip, created_at, last_seen_at, expires_at from sessions where user_id = $1 and revoked_at is null and expires_at > now() order by created_at desc',
+      [viewer.id],
+    );
+    return r.rows.map((row) => ({
+      id: row.id,
+      userAgent: row.user_agent,
+      ip: row.ip,
+      createdAt: new Date(row.created_at).toISOString(),
+      lastSeenAt: row.last_seen_at ? new Date(row.last_seen_at).toISOString() : null,
+      expiresAt: new Date(row.expires_at).toISOString(),
+      isCurrent: row.id === viewerToken,
+    }));
+  }
+
+  async function revokeSession(viewerToken: string | null, sessionId: string) {
+    const viewer = await getUserFromSession(viewerToken);
+    if (!viewer) throw new RepositoryError('auth_failed', 'Authentication required.');
+    const r = await queryDatabase(databaseUrl, 'update sessions set revoked_at = now() where id = $1 and user_id = $2 and revoked_at is null', [sessionId, viewer.id]);
+    return { revoked: r.rowCount ?? 0 };
+  }
+
+  // Email verification + password reset (token hashes only).
+  function sha256(input: string) {
+    return createHash('sha256').update(input).digest('hex');
+  }
+
+  async function requestEmailVerification(viewerToken: string | null) {
+    const viewer = await getUserFromSession(viewerToken);
+    if (!viewer) throw new RepositoryError('auth_failed', 'Authentication required.');
+    const token = randomBytes(32).toString('hex');
+    const id = randomUUID();
+    const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
+    await queryDatabase(databaseUrl, 'insert into email_verification_tokens (id, user_id, token_hash, expires_at) values ($1, $2, $3, $4)', [id, viewer.id, sha256(token), expiresAt]);
+    return { token, email: viewer.email, expiresAt };
+  }
+
+  async function confirmEmailVerification(token: string) {
+    const hash = sha256(token);
+    return withTransaction(databaseUrl, async (client) => {
+      const r = await client.query<{ id: string; user_id: string; expires_at: Date | string; consumed_at: Date | string | null }>(
+        'select id, user_id, expires_at, consumed_at from email_verification_tokens where token_hash = $1 for update',
+        [hash],
+      );
+      const row = r.rows[0];
+      if (!row) throw new RepositoryError('token_not_found', 'Verification token is invalid.');
+      if (row.consumed_at) throw new RepositoryError('token_spent', 'Verification token already used.');
+      if (new Date(row.expires_at).getTime() <= Date.now()) throw new RepositoryError('token_expired', 'Verification token expired.');
+      await client.query('update email_verification_tokens set consumed_at = now() where id = $1', [row.id]);
+      await client.query('update users set email_verified_at = now() where id = $1', [row.user_id]);
+      return { ok: true, userId: row.user_id };
+    });
+  }
+
+  async function requestPasswordReset(email: string) {
+    const r = await queryDatabase<DbUserRow>(databaseUrl, 'select * from users where email = $1', [normalize(email)]);
+    const row = r.rows[0];
+    if (!row) {
+      // Do not leak whether email exists. Return ok with no token.
+      return { token: null as string | null, email };
+    }
+    const token = randomBytes(32).toString('hex');
+    const id = randomUUID();
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000).toISOString();
+    await queryDatabase(databaseUrl, 'insert into password_reset_tokens (id, user_id, token_hash, expires_at) values ($1, $2, $3, $4)', [id, row.id, sha256(token), expiresAt]);
+    return { token, email: row.email, expiresAt };
+  }
+
+  async function confirmPasswordReset(token: string, newPassword: string) {
+    if (newPassword.length < 8) throw new RepositoryError('weak_password' as any, 'Password must be at least 8 characters.');
+    const hash = sha256(token);
+    return withTransaction(databaseUrl, async (client) => {
+      const r = await client.query<{ id: string; user_id: string; expires_at: Date | string; consumed_at: Date | string | null }>(
+        'select id, user_id, expires_at, consumed_at from password_reset_tokens where token_hash = $1 for update',
+        [hash],
+      );
+      const row = r.rows[0];
+      if (!row) throw new RepositoryError('token_not_found', 'Reset token invalid.');
+      if (row.consumed_at) throw new RepositoryError('token_spent', 'Reset token already used.');
+      if (new Date(row.expires_at).getTime() <= Date.now()) throw new RepositoryError('token_expired', 'Reset token expired.');
+      const digest = hashPassword(newPassword);
+      await client.query('update users set password_hash = $1, password_salt = $2 where id = $3', [digest.hash, digest.salt, row.user_id]);
+      await client.query('update password_reset_tokens set consumed_at = now() where id = $1', [row.id]);
+      // Revoke all active sessions on password change
+      await client.query('update sessions set revoked_at = now() where user_id = $1 and revoked_at is null', [row.user_id]);
+      return { ok: true, userId: row.user_id };
+    });
+  }
+
+  async function attachPostMedia(args: { postId: string; userId: string | null; entries: Array<{ key: string; publicUrl: string; contentType?: string | null; kind?: 'photo' | 'video'; byteSize?: number | null }> }) {
+    if (!args.entries.length) return;
+    return withTransaction(databaseUrl, async (client) => {
+      for (let i = 0; i < args.entries.length; i++) {
+        const e = args.entries[i];
+        await client.query(
+          'insert into post_media (id, post_id, user_id, media_key, public_url, content_type, kind, byte_size, position) values ($1, $2, $3, $4, $5, $6, $7, $8, $9)',
+          [randomUUID(), args.postId, args.userId, e.key, e.publicUrl, e.contentType ?? null, e.kind ?? 'photo', e.byteSize ?? null, i],
+        );
+      }
+    });
   }
 
   async function getSession(sessionToken: string | null) {
@@ -1817,16 +1962,34 @@ function createPostgresRepository(databaseUrl: string) {
     };
   }
 
-  async function getFeed(mode?: FeedMode, sessionToken?: string | null) {
+  async function getFeed(mode?: FeedMode, sessionToken?: string | null, opts?: { cursor?: string | null; limit?: number }) {
     const user = await getUserFromSession(sessionToken ?? null);
     const actorKey = user ? `user:${user.id}` : `anon:${sessionToken || 'public-preview'}`;
     const [blockedAuthorIds, mutedAuthorIds] = await Promise.all([
       getBlockedAuthorIds(user),
       getMutedAuthorIds(user),
     ]);
-    const result = mode && mode !== 'Following'
-      ? await queryDatabase<DbPostRow>(databaseUrl, 'select * from memory_posts where mode = $1 order by created_at desc', [mode])
-      : await queryDatabase<DbPostRow>(databaseUrl, 'select * from memory_posts order by created_at desc');
+    const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
+    const cursor = decodeCursor(opts?.cursor ?? null);
+
+    const params: unknown[] = [];
+    let where = '';
+    if (mode && mode !== 'Following') {
+      params.push(mode);
+      where = 'where mode = $' + params.length;
+    }
+    if (cursor) {
+      params.push(cursor.createdAt);
+      const p1 = '$' + params.length;
+      params.push(cursor.id);
+      const p2 = '$' + params.length;
+      const clause = `(created_at, id) < (${p1}::timestamptz, ${p2})`;
+      where = where ? `${where} and ${clause}` : `where ${clause}`;
+    }
+    params.push(limit + 1);
+    const sql = `select * from memory_posts ${where} order by created_at desc, id desc limit $${params.length}`;
+    const result = await queryDatabase<DbPostRow>(databaseUrl, sql, params);
+
     const actionResult = await queryDatabase<DbPostActionRow>(databaseUrl, 'select post_id, action from post_actions where actor_key = $1', [actorKey]);
     const hiddenPostIds = new Set(actionResult.rows.filter((action) => action.action === 'hide').map((action) => action.post_id));
     const viewerActions = actionResult.rows.map((action) => ({
@@ -1834,11 +1997,21 @@ function createPostgresRepository(databaseUrl: string) {
       action: action.action,
     }));
 
-    return result.rows
+    const rows = result.rows.slice(0, limit);
+    const items = rows
       .map(rowToPost)
       .filter((post) => !hiddenPostIds.has(post.id))
       .filter((post) => !post.authorId || !mutedAuthorIds.has(post.authorId))
       .map((post) => withViewerState(post, viewerActions, blockedAuthorIds));
+
+    let nextCursor: string | null = null;
+    if (result.rows.length > limit) {
+      const last = rows[rows.length - 1];
+      if (last) {
+        nextCursor = encodeCursor({ createdAt: new Date(last.created_at).toISOString(), id: last.id });
+      }
+    }
+    return { items, nextCursor } as { items: ReturnType<typeof rowToPost>[]; nextCursor: string | null };
   }
 
   async function getPlaces() {
@@ -2065,6 +2238,7 @@ function createPostgresRepository(databaseUrl: string) {
     visibility,
     mediaUrl,
     mediaUrls,
+    mediaKeys,
     sessionToken,
   }: {
     checkInTokenId: string;
@@ -2072,88 +2246,102 @@ function createPostgresRepository(databaseUrl: string) {
     visibility: Visibility;
     mediaUrl?: string;
     mediaUrls?: string[];
+    mediaKeys?: string[];
     sessionToken?: string | null;
   }) {
-    const tokenResult = await queryDatabase<DbTokenRow>(databaseUrl, 'select * from check_in_tokens where id = $1', [checkInTokenId]);
-    const token = tokenResult.rows[0];
-
-    if (!token) {
-      throw new RepositoryError('token_not_found', 'Check-in token was not found.');
-    }
-
-    if (new Date(token.expires_at).getTime() <= Date.now()) {
-      throw new RepositoryError('token_expired', 'Check-in token has expired.');
-    }
-
-    if (token.uploads_remaining <= 0) {
-      throw new RepositoryError('token_spent', 'Check-in token has no uploads remaining.');
-    }
-
     const user = await getUserFromSession(sessionToken ?? null);
-    const now = new Date();
-    const memory: MemoryPost = {
-      id: `memory-${randomUUID()}`,
-      mode: 'Memories',
-      authorId: user?.id,
-      authorName: user?.displayName ?? 'You',
-      authorHandle: user ? `@${user.handle}` : '@you',
-      placeId: token.place_id ?? undefined,
-      placeName: token.place_name,
-      city: 'Seoul',
-      distanceMeters: 0,
-      unlockRadiusMeters: token.unlock_radius_meters,
-      unlockState: 'open',
-      visibility,
-      createdAt: now.toISOString(),
-      caption,
-      timeLabel: 'just now',
-      filmStamp: `${formatFilmStamp(now)} / CHECK-IN`,
-      recallLabel: 'Saved at this place',
-      mediaUrl,
-      mediaUrls: mediaUrls?.length ? mediaUrls : mediaUrl ? [mediaUrl] : [],
-      mediaColors: ['#07151A', '#2B5B61', '#C7F95B'],
-      accentColor: colors.lime,
-      stats: { echoes: 0, replies: 0, saves: 0 },
-    };
+    return withTransaction(databaseUrl, async (client) => {
+      const tokenResult = await client.query<DbTokenRow>('select * from check_in_tokens where id = $1 for update', [checkInTokenId]);
+      const token = tokenResult.rows[0];
 
-    await queryDatabase(databaseUrl, 'update check_in_tokens set uploads_remaining = uploads_remaining - 1 where id = $1', [checkInTokenId]);
-    const inserted = await queryDatabase<DbPostRow>(databaseUrl, `
-      insert into memory_posts (
-        id, mode, user_id, author_name, author_handle, place_id, place_name, city,
-        distance_meters, unlock_radius_meters, unlock_state, visibility, caption,
-        time_label, film_stamp, recall_label, media_colors, media_url, media_urls, accent_color, stats
-      )
-      values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19::jsonb, $20, $21::jsonb)
-      returning *
-    `, [
-      memory.id,
-      memory.mode,
-      memory.authorId ?? null,
-      memory.authorName,
-      memory.authorHandle,
-      memory.placeId ?? null,
-      memory.placeName,
-      memory.city,
-      memory.distanceMeters,
-      memory.unlockRadiusMeters,
-      memory.unlockState,
-      memory.visibility,
-      memory.caption,
-      memory.timeLabel,
-      memory.filmStamp,
-      memory.recallLabel ?? null,
-      JSON.stringify(memory.mediaColors),
-      memory.mediaUrl ?? null,
-      JSON.stringify(memory.mediaUrls ?? []),
-      memory.accentColor,
-      JSON.stringify(memory.stats),
-    ]);
-    const updatedToken = await queryDatabase<DbTokenRow>(databaseUrl, 'select * from check_in_tokens where id = $1', [checkInTokenId]);
+      if (!token) {
+        throw new RepositoryError('token_not_found', 'Check-in token was not found.');
+      }
 
-    return {
-      memory: rowToPost(inserted.rows[0]),
-      checkInToken: rowToToken(updatedToken.rows[0]),
-    };
+      if (new Date(token.expires_at).getTime() <= Date.now()) {
+        throw new RepositoryError('token_expired', 'Check-in token has expired.');
+      }
+
+      if (token.uploads_remaining <= 0) {
+        throw new RepositoryError('token_spent', 'Check-in token has no uploads remaining.');
+      }
+
+      const now = new Date();
+      const memory: MemoryPost = {
+        id: `memory-${randomUUID()}`,
+        mode: 'Memories',
+        authorId: user?.id,
+        authorName: user?.displayName ?? 'You',
+        authorHandle: user ? `@${user.handle}` : '@you',
+        placeId: token.place_id ?? undefined,
+        placeName: token.place_name,
+        city: 'Seoul',
+        distanceMeters: 0,
+        unlockRadiusMeters: token.unlock_radius_meters,
+        unlockState: 'open',
+        visibility,
+        createdAt: now.toISOString(),
+        caption,
+        timeLabel: 'just now',
+        filmStamp: `${formatFilmStamp(now)} / CHECK-IN`,
+        recallLabel: 'Saved at this place',
+        mediaUrl,
+        mediaUrls: mediaUrls?.length ? mediaUrls : mediaUrl ? [mediaUrl] : [],
+        mediaColors: ['#07151A', '#2B5B61', '#C7F95B'],
+        accentColor: colors.lime,
+        stats: { echoes: 0, replies: 0, saves: 0 },
+      };
+
+      await client.query('update check_in_tokens set uploads_remaining = uploads_remaining - 1 where id = $1', [checkInTokenId]);
+      const inserted = await client.query<DbPostRow>(`
+        insert into memory_posts (
+          id, mode, user_id, author_name, author_handle, place_id, place_name, city,
+          distance_meters, unlock_radius_meters, unlock_state, visibility, caption,
+          time_label, film_stamp, recall_label, media_colors, media_url, media_urls, accent_color, stats
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19::jsonb, $20, $21::jsonb)
+        returning *
+      `, [
+        memory.id,
+        memory.mode,
+        memory.authorId ?? null,
+        memory.authorName,
+        memory.authorHandle,
+        memory.placeId ?? null,
+        memory.placeName,
+        memory.city,
+        memory.distanceMeters,
+        memory.unlockRadiusMeters,
+        memory.unlockState,
+        memory.visibility,
+        memory.caption,
+        memory.timeLabel,
+        memory.filmStamp,
+        memory.recallLabel ?? null,
+        JSON.stringify(memory.mediaColors),
+        memory.mediaUrl ?? null,
+        JSON.stringify(memory.mediaUrls ?? []),
+        memory.accentColor,
+        JSON.stringify(memory.stats),
+      ]);
+
+      // Attach presigned media keys (if any).
+      if (mediaKeys?.length) {
+        for (let i = 0; i < mediaKeys.length; i++) {
+          const k = mediaKeys[i];
+          await client.query(
+            'insert into post_media (id, post_id, user_id, media_key, public_url, kind, position) values ($1, $2, $3, $4, $5, $6, $7)',
+            [randomUUID(), memory.id, user?.id ?? null, k, memory.mediaUrls?.[i] ?? '', 'photo', i],
+          );
+        }
+      }
+
+      const updatedToken = await client.query<DbTokenRow>('select * from check_in_tokens where id = $1', [checkInTokenId]);
+      return {
+        memory: rowToPost(inserted.rows[0]),
+        checkInToken: rowToToken(updatedToken.rows[0]),
+      };
+    });
   }
 
   async function updateMemoryPost({
@@ -2757,6 +2945,14 @@ function createPostgresRepository(databaseUrl: string) {
     registerUser,
     loginUser,
     getSession,
+    logoutSession,
+    listSessions,
+    revokeSession,
+    requestEmailVerification,
+    confirmEmailVerification,
+    requestPasswordReset,
+    confirmPasswordReset,
+    attachPostMedia,
     updateProfile,
     getFeed,
     searchContent,

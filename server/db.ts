@@ -1,7 +1,7 @@
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 
-import { Pool } from 'pg';
+import { Pool, type PoolClient } from 'pg';
 
 export type DatabaseHealth = {
   configured: boolean;
@@ -93,6 +93,7 @@ export async function migrateDatabase(databaseUrl: string | null) {
     '006_user_profile_fields.sql',
     '007_memory_post_media_urls.sql',
     '008_postgis.sql',
+    '009_email_tokens.sql',
   ];
   let applied = 0;
 
@@ -121,6 +122,29 @@ export async function migrateDatabase(databaseUrl: string | null) {
     configured: true,
     applied,
   };
+}
+
+export async function withTransaction<T>(databaseUrl: string | null, fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const database = getPool(databaseUrl);
+  if (!database) {
+    throw new Error('DATABASE_URL is not set.');
+  }
+  const client = await database.connect();
+  try {
+    await client.query('begin');
+    const result = await fn(client);
+    await client.query('commit');
+    return result;
+  } catch (error) {
+    try {
+      await client.query('rollback');
+    } catch {
+      /* ignore rollback failure */
+    }
+    throw error;
+  } finally {
+    client.release();
+  }
 }
 
 export async function closeDatabase() {
