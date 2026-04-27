@@ -1,22 +1,22 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 
-import { memoryPosts as initialMemoryPosts } from '../data/happened';
 import {
   createMemory as createApiMemory,
+  deleteMemoryPost as deleteApiMemoryPost,
   fetchFeed,
   fetchNotifications,
   fetchPlaces,
   fetchSafetySummary,
   fetchSearchResults,
   fetchTimeline,
-  issueCheckInToken as issueApiCheckInToken,
   markNotificationsRead,
   toggleBlock as toggleApiBlock,
+  updateMemoryPost as updateApiMemoryPost,
   updatePostAction as updateApiPostAction,
 } from '../services/happenedApi';
+import { getCurrentLocation } from '../services/location';
 import { useSession } from './SessionContext';
 import type {
-  CheckInToken,
   MemoryPost,
   MemoryPostAction,
   NotificationItem,
@@ -24,30 +24,31 @@ import type {
   SafetySummary,
   SearchResults,
   TimelineMonth,
-  UserLocation,
   Visibility,
 } from '../types/happened';
 
 type AppDataContextValue = {
   feedPosts: MemoryPost[];
   setFeedPosts: React.Dispatch<React.SetStateAction<MemoryPost[]>>;
+  nearbyPosts: MemoryPost[];
   notifications: NotificationItem[];
   setNotifications: React.Dispatch<React.SetStateAction<NotificationItem[]>>;
   places: PlaceBubble[];
   timeline: TimelineMonth[];
   safetySummary: SafetySummary | null;
   refresh: () => Promise<void>;
-  // checkin/upload
-  checkInToken: CheckInToken | null;
-  setCheckInToken: React.Dispatch<React.SetStateAction<CheckInToken | null>>;
-  issueCheckIn: (placeName: string, opts: { distanceMeters?: number; location?: UserLocation }) => Promise<CheckInToken>;
+  refreshNearby: () => Promise<void>;
   uploadMemory: (input: {
-    checkInTokenId: string;
+    lat: number;
+    lng: number;
+    placeName?: string;
     caption: string;
     visibility?: Visibility;
     mediaItems?: Array<{ mediaDataUrl: string; mediaFileName?: string }>;
-  }) => Promise<{ memory: MemoryPost; checkInToken: CheckInToken }>;
+  }) => Promise<{ memory: MemoryPost }>;
   performPostAction: (postId: string, action: MemoryPostAction, input?: { body?: string }) => Promise<{ message: string; post: MemoryPost }>;
+  editPost: (postId: string, input: { caption?: string; visibility?: Visibility }) => Promise<{ post: MemoryPost; message: string }>;
+  deletePost: (postId: string) => Promise<void>;
   acknowledgeNotifications: () => Promise<void>;
   blockAuthor: (handle: string) => Promise<{ message: string }>;
   search: (query: string) => Promise<SearchResults>;
@@ -57,61 +58,75 @@ const AppDataContext = createContext<AppDataContextValue | null>(null);
 
 export function AppDataProvider({ children }: { children: ReactNode }) {
   const { session } = useSession();
-  const [feedPosts, setFeedPosts] = useState<MemoryPost[]>(initialMemoryPosts);
+  const [feedPosts, setFeedPosts] = useState<MemoryPost[]>([]);
+  const [nearbyPosts, setNearbyPosts] = useState<MemoryPost[]>([]);
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [places, setPlaces] = useState<PlaceBubble[]>([]);
   const [timeline, setTimeline] = useState<TimelineMonth[]>([]);
   const [safetySummary, setSafetySummary] = useState<SafetySummary | null>(null);
-  const [checkInToken, setCheckInToken] = useState<CheckInToken | null>(null);
-
   const token = session?.token;
 
+  // viewer 위치 캐시 (30초 쓰로틀)
+  const viewerCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
+  const lastLocationFetchRef = useRef<number>(0);
+
+  const refreshViewerCoords = useCallback(async () => {
+    const now = Date.now();
+    if (now - lastLocationFetchRef.current < 30_000) return;
+    lastLocationFetchRef.current = now;
+    try {
+      const loc = await getCurrentLocation();
+      viewerCoordsRef.current = { lat: loc.latitude, lng: loc.longitude };
+    } catch {
+      // 권한 거부 → null 유지 (모자이크 기본값)
+    }
+  }, []);
+
+  // 앱 진입 시 1회 위치 확보 (silent)
+  useEffect(() => {
+    refreshViewerCoords().catch(() => undefined);
+  }, [refreshViewerCoords]);
+
   const refresh = useCallback(async () => {
-    const [posts, apiPlaces, months, nextNotifications, nextSafety] = await Promise.all([
-      fetchFeed(undefined, token),
-      fetchPlaces(),
-      fetchTimeline(),
-      fetchNotifications(token),
-      token ? fetchSafetySummary(token).catch(() => null) : Promise.resolve(null),
-    ]);
+    // 위치 갱신 시도 (30초 쓰로틀)
+    await refreshViewerCoords().catch(() => undefined);
+
+    // feed 먼저 fetch → 즉시 렌더링
+    const posts = await fetchFeed(undefined, token, viewerCoordsRef.current ?? undefined);
     setFeedPosts(posts);
-    setPlaces(apiPlaces);
-    setTimeline(months);
-    setNotifications(nextNotifications);
-    setSafetySummary(nextSafety);
-  }, [token]);
+
+    // 나머지는 비동기 백그라운드
+    setTimeout(() => {
+      fetchPlaces().then(setPlaces).catch(() => undefined);
+      fetchTimeline().then(setTimeline).catch(() => undefined);
+      fetchNotifications(token).then(setNotifications).catch(() => undefined);
+      if (token) {
+        fetchSafetySummary(token).then(setSafetySummary).catch(() => undefined);
+      }
+    }, 0);
+  }, [token, refreshViewerCoords]);
 
   useEffect(() => {
     refresh().catch(() => undefined);
   }, [refresh]);
 
-  const issueCheckIn = useCallback(
-    async (placeName: string, opts: { distanceMeters?: number; location?: UserLocation }) => {
-      const result = await issueApiCheckInToken(
-        placeName,
-        { distanceMeters: opts.distanceMeters ?? 84, location: opts.location },
-        token,
-      );
-      setCheckInToken(result);
-      return result;
-    },
-    [token],
-  );
-
   const uploadMemory = useCallback(
     async ({
-      checkInTokenId,
+      lat,
+      lng,
+      placeName,
       caption,
       visibility = 'PublicAfter1h',
       mediaItems,
     }: {
-      checkInTokenId: string;
+      lat: number;
+      lng: number;
+      placeName?: string;
       caption: string;
       visibility?: Visibility;
       mediaItems?: Array<{ mediaDataUrl: string; mediaFileName?: string }>;
     }) => {
-      const result = await createApiMemory(checkInTokenId, caption, visibility, { mediaItems }, token);
-      setCheckInToken(result.checkInToken);
+      const result = await createApiMemory({ lat, lng, placeName, caption, visibility, mediaItems }, token);
       setFeedPosts((current) => [result.memory, ...current.filter((post) => post.id !== result.memory.id)]);
       return result;
     },
@@ -141,6 +156,34 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }
   }, [notifications, token]);
 
+  const refreshNearby = useCallback(async () => {
+    await refreshViewerCoords().catch(() => undefined);
+    if (!viewerCoordsRef.current) {
+      throw new Error('위치 권한이 필요해요');
+    }
+    const posts = await fetchFeed('Nearby', token, viewerCoordsRef.current);
+    setNearbyPosts(posts);
+  }, [token, refreshViewerCoords]);
+
+  const editPost = useCallback(
+    async (postId: string, input: { caption?: string; visibility?: Visibility }) => {
+      const result = await updateApiMemoryPost(postId, input, token);
+      setFeedPosts((current) => current.map((post) => (post.id === result.post.id ? result.post : post)));
+      setNearbyPosts((current) => current.map((post) => (post.id === result.post.id ? result.post : post)));
+      return result;
+    },
+    [token],
+  );
+
+  const deletePost = useCallback(
+    async (postId: string) => {
+      await deleteApiMemoryPost(postId, token);
+      setFeedPosts((current) => current.filter((post) => post.id !== postId));
+      setNearbyPosts((current) => current.filter((post) => post.id !== postId));
+    },
+    [token],
+  );
+
   const blockAuthor = useCallback(
     async (handle: string) => {
       const result = await toggleApiBlock(handle, token);
@@ -156,32 +199,35 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     () => ({
       feedPosts,
       setFeedPosts,
+      nearbyPosts,
       notifications,
       setNotifications,
       places,
       timeline,
       safetySummary,
       refresh,
-      checkInToken,
-      setCheckInToken,
-      issueCheckIn,
+      refreshNearby,
       uploadMemory,
       performPostAction,
+      editPost,
+      deletePost,
       acknowledgeNotifications,
       blockAuthor,
       search,
     }),
     [
       feedPosts,
+      nearbyPosts,
       notifications,
       places,
       timeline,
       safetySummary,
       refresh,
-      checkInToken,
-      issueCheckIn,
+      refreshNearby,
       uploadMemory,
       performPostAction,
+      editPost,
+      deletePost,
       acknowledgeNotifications,
       blockAuthor,
       search,

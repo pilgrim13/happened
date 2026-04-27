@@ -3,7 +3,7 @@ import { ArrowLeft, Camera, CalendarDays, Lock, MapPin, RadioTower } from 'lucid
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { memoryPosts, timelineMonths } from '../data/happened';
+import { timelineMonths } from '../data/happened';
 import { localizePlaceName, useI18n } from '../i18n';
 import { colors, fonts, radius } from '../theme/tokens';
 import type { MemoryPost, TimelineMonth } from '../types/happened';
@@ -16,7 +16,7 @@ type Props = {
   onCapture: () => void;
 };
 
-export function PlaceDetailScreen({ placeName, posts = memoryPosts, months = timelineMonths, onBack, onCapture }: Props) {
+export function PlaceDetailScreen({ placeName, posts = [], months = timelineMonths, onBack, onCapture }: Props) {
   const insets = useSafeAreaInsets();
   const { language, t } = useI18n();
   const placePosts = posts.filter((post) => post.placeName === placeName);

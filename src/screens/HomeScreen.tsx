@@ -1,25 +1,30 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { Bell, Bookmark, Camera, ChevronLeft, ChevronRight, Clock, Heart, Lock, MapPin, MessageCircle, MoreHorizontal, Plus, RadioTower, RefreshCw, Search, Send } from 'lucide-react-native';
+import { Bell, Bookmark, Camera, ChevronLeft, ChevronRight, Clock, Globe, Heart, Lock, MapPin, MessageCircle, MoreHorizontal, Plus, RadioTower, RefreshCw, Search, Send } from 'lucide-react-native';
 import { useEffect, useRef, useState } from 'react';
-import { FlatList, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MediaRenderer } from '../components/MediaRenderer';
 import { ScreenState } from '../components/ScreenState';
-import { feedModes, memoryPosts } from '../data/happened';
+import { feedModes } from '../data/happened';
 import { localizePlaceName, localizeRecallLabel, localizeTimeLabel, translateFeedMode, useI18n } from '../i18n';
 import { colors, fonts, radius } from '../theme/tokens';
-import type { FeedMode, MemoryPost, MemoryPostAction, NotificationItem, SearchResults, UnlockState } from '../types/happened';
+import type { FeedMode, MemoryPost, MemoryPostAction, NotificationItem, SearchResults, UnlockState, Visibility } from '../types/happened';
 
 type HomeScreenProps = {
   initialIndex?: number;
   posts?: MemoryPost[];
+  nearbyPosts?: MemoryPost[];
+  currentUserId?: string;
   onOpenPlace?: (placeName: string) => void;
   onCaptureAtPlace?: (placeName: string) => void;
   onNotice?: (message: string) => void;
   onStartPost?: () => void;
   onRefresh?: () => void | Promise<void>;
+  onNearbyRequest?: () => void | Promise<void>;
   onPostAction?: (postId: string, action: MemoryPostAction, input?: { body?: string }) => void | Promise<void>;
+  onEditPost?: (postId: string, input: { caption?: string; visibility?: Visibility }) => void | Promise<void>;
+  onDeletePost?: (postId: string) => void | Promise<void>;
   onSharePost?: (post: MemoryPost) => void | Promise<void>;
   onBlockAuthor?: (handle: string) => void | Promise<void>;
   notifications?: NotificationItem[];
@@ -40,7 +45,8 @@ function formatCount(value: number) {
   return `${value}`;
 }
 
-function formatDistance(distanceMeters: number, t: ReturnType<typeof useI18n>['t']) {
+function formatDistance(distanceMeters: number | null, t: ReturnType<typeof useI18n>['t']): string | null {
+  if (distanceMeters === null || distanceMeters === undefined) return null;
   if (distanceMeters >= 1000) {
     return t('home.distanceKm', { kilometers: (distanceMeters / 1000).toFixed(1) });
   }
@@ -105,13 +111,18 @@ function notificationText(notification: NotificationItem, t: ReturnType<typeof u
 
 export function HomeScreen({
   initialIndex = 0,
-  posts = memoryPosts,
+  posts = [],
+  nearbyPosts = [],
+  currentUserId,
   onOpenPlace,
   onCaptureAtPlace,
   onNotice,
   onStartPost,
   onRefresh,
+  onNearbyRequest,
   onPostAction,
+  onEditPost,
+  onDeletePost,
   onSharePost,
   onBlockAuthor,
   notifications = [],
@@ -133,10 +144,24 @@ export function HomeScreen({
   const [remoteSearch, setRemoteSearch] = useState<SearchResults | null>(null);
   const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const prevModeRef = useRef(selectedMode);
   const trimmedQuery = query.trim();
   const usingRemoteSearch = Boolean(remoteSearch && trimmedQuery.length >= 2);
-  const sourcePosts = usingRemoteSearch ? remoteSearch?.posts ?? [] : posts;
-  const visiblePosts = sourcePosts.filter((post) => (selectedMode === 'Following' || post.mode === selectedMode) && (usingRemoteSearch || matchesQuery(post, query)));
+  const sourcePosts = usingRemoteSearch ? (remoteSearch?.posts ?? []) : selectedMode === 'Nearby' ? nearbyPosts : posts;
+  const visiblePosts = sourcePosts.filter((post) =>
+    (usingRemoteSearch || selectedMode === 'Nearby' || selectedMode === 'Following' || post.mode === selectedMode) &&
+    (usingRemoteSearch || matchesQuery(post, query)),
+  );
+
+  // Nearby 탭 전환 시 서버에 위치 기반 요청
+  useEffect(() => {
+    if (selectedMode === 'Nearby' && prevModeRef.current !== 'Nearby') {
+      Promise.resolve(onNearbyRequest?.()).catch((err: unknown) => {
+        onNotice?.(err instanceof Error ? err.message : '위치 권한이 필요해요');
+      });
+    }
+    prevModeRef.current = selectedMode;
+  }, [selectedMode, onNearbyRequest, onNotice]);
 
   useEffect(() => {
     if (!searchOpen || !onSearch || trimmedQuery.length < 2) {
@@ -188,6 +213,7 @@ export function HomeScreen({
 
     setRefreshing(true);
     Promise.resolve(onRefresh())
+      .then(() => onNotice?.(t('home.refreshed')))
       .catch((error) => onNotice?.(error instanceof Error ? error.message : t('home.refreshFailed')))
       .finally(() => setRefreshing(false));
   };
@@ -331,11 +357,20 @@ export function HomeScreen({
           </View>
         }
         ListEmptyComponent={
-          <ScreenState
-            variant="empty"
-            title={t('home.noPosts')}
-            message={query ? t('home.noSearch') : t('home.emptyFeed')}
-          />
+          query ? (
+            <ScreenState
+              variant="empty"
+              title={t('home.noPosts')}
+              message={t('home.noSearch')}
+            />
+          ) : (
+            <ScreenState
+              variant="empty"
+              title={t('home.noMemories')}
+              message={t('home.noMemoriesText')}
+              action={onStartPost ? { label: t('home.goCapture'), onPress: onStartPost } : undefined}
+            />
+          )
         }
         refreshing={refreshing}
         onRefresh={onRefresh ? refreshFeed : undefined}
@@ -344,10 +379,13 @@ export function HomeScreen({
         renderItem={({ item }) => (
           <PostCard
             item={item}
+            currentUserId={currentUserId}
             onOpenPlace={onOpenPlace}
             onCaptureAtPlace={onCaptureAtPlace}
             onNotice={onNotice}
             onPostAction={onPostAction}
+            onEditPost={onEditPost}
+            onDeletePost={onDeletePost}
             onSharePost={onSharePost}
             onBlockAuthor={onBlockAuthor}
             onOpenPost={onOpenPost}
@@ -360,12 +398,30 @@ export function HomeScreen({
   );
 }
 
+function getPublicCountdownMins(item: MemoryPost, currentUserId?: string): number | null {
+  if (
+    item.visibility !== 'PublicAfter1h' ||
+    !item.createdAt ||
+    !currentUserId ||
+    item.authorId !== currentUserId
+  ) {
+    return null;
+  }
+  const elapsedMs = Date.now() - new Date(item.createdAt).getTime();
+  const remainMs = 60 * 60 * 1000 - elapsedMs;
+  if (remainMs <= 0) return null;
+  return Math.ceil(remainMs / (60 * 1000));
+}
+
 function PostCard({
   item,
+  currentUserId,
   onOpenPlace,
   onCaptureAtPlace,
   onNotice,
   onPostAction,
+  onEditPost,
+  onDeletePost,
   onSharePost,
   onBlockAuthor,
   onOpenPost,
@@ -373,10 +429,13 @@ function PostCard({
   t,
 }: {
   item: MemoryPost;
+  currentUserId?: string;
   onOpenPlace?: (placeName: string) => void;
   onCaptureAtPlace?: (placeName: string) => void;
   onNotice?: (message: string) => void;
   onPostAction?: (postId: string, action: MemoryPostAction, input?: { body?: string }) => void | Promise<void>;
+  onEditPost?: (postId: string, input: { caption?: string; visibility?: Visibility }) => void | Promise<void>;
+  onDeletePost?: (postId: string) => void | Promise<void>;
   onSharePost?: (post: MemoryPost) => void | Promise<void>;
   onBlockAuthor?: (handle: string) => void | Promise<void>;
   onOpenPost?: (postId: string) => void;
@@ -387,9 +446,14 @@ function PostCard({
   const state = unlockCopy(item.unlockState, t);
   const initials = item.authorName.slice(0, 1).toUpperCase();
   const Icon = state.Icon;
+  const countdownMins = getPublicCountdownMins(item, currentUserId);
   const [replyOpen, setReplyOpen] = useState(false);
   const [replyText, setReplyText] = useState('');
   const [menuOpen, setMenuOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editCaption, setEditCaption] = useState('');
+  const [editVisibility, setEditVisibility] = useState<Visibility>('Public');
+  const isOwn = Boolean(currentUserId && item.authorId === currentUserId);
   const mediaUrls = locked ? [] : item.mediaUrls?.length ? item.mediaUrls : item.mediaUrl ? [item.mediaUrl] : [];
   const [mediaIndex, setMediaIndex] = useState(0);
   const [mediaWidth, setMediaWidth] = useState(0);
@@ -441,6 +505,22 @@ function PostCard({
             </Pressable>
             <Text style={styles.dotText}>·</Text>
             <Text style={styles.timeText}>{localizeTimeLabel(item.timeLabel, language)}</Text>
+            {item.visibility === 'Public' ? (
+              <View style={styles.visBadge}>
+                <Globe color={colors.setlogMuted} size={10} strokeWidth={2.4} />
+                <Text style={styles.visBadgeText}>{t('visibility.Public.short')}</Text>
+              </View>
+            ) : item.visibility === 'PublicAfter1h' ? (
+              <View style={styles.visBadge}>
+                <Clock color={colors.setlogMuted} size={10} strokeWidth={2.4} />
+                <Text style={styles.visBadgeText}>{t('visibility.PublicAfter1h.short')}</Text>
+              </View>
+            ) : item.visibility === 'Followers' ? (
+              <View style={styles.visBadge}>
+                <Lock color={colors.setlogMuted} size={10} strokeWidth={2.4} />
+                <Text style={styles.visBadgeText}>{t('visibility.Followers.short')}</Text>
+              </View>
+            ) : null}
           </View>
           <Pressable style={styles.placeLine} onPress={() => onOpenPlace?.(item.placeName)}>
             <MapPin color={colors.setlogMuted} size={13} strokeWidth={2.4} />
@@ -454,35 +534,131 @@ function PostCard({
 
       {menuOpen ? (
         <View style={styles.menuPanel}>
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => {
-              setMenuOpen(false);
-              runAction('hide');
-            }}
-          >
-            <Text style={styles.menuText}>{t('home.hide')}</Text>
-          </Pressable>
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => {
-              setMenuOpen(false);
-              runAction('report');
-            }}
-          >
-            <Text style={[styles.menuText, styles.menuDangerText]}>{t('home.report')}</Text>
-          </Pressable>
-          <Pressable
-            style={styles.menuItem}
-            onPress={() => {
-              setMenuOpen(false);
-              Promise.resolve(onBlockAuthor?.(item.authorHandle)).catch((error) => {
-                onNotice?.(error instanceof Error ? error.message : t('home.actionFailed'));
-              });
-            }}
-          >
-            <Text style={[styles.menuText, styles.menuDangerText]}>{t('home.blockAuthor', { handle: item.authorHandle })}</Text>
-          </Pressable>
+          {isOwn ? (
+            <>
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuOpen(false);
+                  setEditCaption(item.caption);
+                  setEditVisibility(item.visibility as Visibility);
+                  setEditOpen(true);
+                }}
+              >
+                <Text style={styles.menuText}>{t('home.editPost')}</Text>
+              </Pressable>
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuOpen(false);
+                  Alert.alert(
+                    t('home.deleteConfirmTitle'),
+                    t('home.deleteConfirmText'),
+                    [
+                      { text: t('common.cancel'), style: 'cancel' },
+                      {
+                        text: t('home.deleteConfirmAction'),
+                        style: 'destructive',
+                        onPress: () => {
+                          Promise.resolve(onDeletePost?.(item.id)).catch((error) => {
+                            onNotice?.(error instanceof Error ? error.message : t('home.actionFailed'));
+                          });
+                        },
+                      },
+                    ],
+                  );
+                }}
+              >
+                <Text style={[styles.menuText, styles.menuDangerText]}>{t('home.deletePost')}</Text>
+              </Pressable>
+            </>
+          ) : (
+            <>
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuOpen(false);
+                  runAction('hide');
+                }}
+              >
+                <Text style={styles.menuText}>{t('home.hide')}</Text>
+              </Pressable>
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuOpen(false);
+                  runAction('report');
+                }}
+              >
+                <Text style={[styles.menuText, styles.menuDangerText]}>{t('home.report')}</Text>
+              </Pressable>
+              <Pressable
+                style={styles.menuItem}
+                onPress={() => {
+                  setMenuOpen(false);
+                  Promise.resolve(onBlockAuthor?.(item.authorHandle)).catch((error) => {
+                    onNotice?.(error instanceof Error ? error.message : t('home.actionFailed'));
+                  });
+                }}
+              >
+                <Text style={[styles.menuText, styles.menuDangerText]}>{t('home.blockAuthor', { handle: item.authorHandle })}</Text>
+              </Pressable>
+            </>
+          )}
+        </View>
+      ) : null}
+
+      {editOpen ? (
+        <View style={styles.editBox}>
+          <TextInput
+            value={editCaption}
+            onChangeText={setEditCaption}
+            multiline
+            style={styles.editInput}
+            placeholder={t('home.editCaption')}
+            placeholderTextColor={colors.setlogFaint}
+          />
+          <View style={styles.editVisRow}>
+            {([
+              { key: 'Followers' as Visibility, Icon: Lock },
+              { key: 'PublicAfter1h' as Visibility, Icon: Clock },
+              { key: 'Public' as Visibility, Icon: Globe },
+            ]).map(({ key, Icon }) => (
+              <Pressable
+                key={key}
+                style={[styles.visChip, editVisibility === key && styles.visChipActive]}
+                onPress={() => setEditVisibility(key)}
+              >
+                <Icon
+                  color={editVisibility === key ? colors.setlogPaper : colors.setlogMuted}
+                  size={11}
+                  strokeWidth={2.4}
+                />
+                <Text style={[styles.visChipText, editVisibility === key && styles.visChipTextActive]}>
+                  {t(`visibility.${key}.label`)}
+                </Text>
+              </Pressable>
+            ))}
+          </View>
+          <View style={styles.editActions}>
+            <Pressable style={styles.editCancelBtn} onPress={() => setEditOpen(false)}>
+              <Text style={styles.editCancelText}>{t('common.cancel')}</Text>
+            </Pressable>
+            <Pressable
+              style={styles.editSaveBtn}
+              onPress={() => {
+                Promise.resolve(
+                  onEditPost?.(item.id, { caption: editCaption, visibility: editVisibility }),
+                )
+                  .then(() => setEditOpen(false))
+                  .catch((error) => {
+                    onNotice?.(error instanceof Error ? error.message : t('home.actionFailed'));
+                  });
+              }}
+            >
+              <Text style={styles.editSaveText}>{t('common.save')}</Text>
+            </Pressable>
+          </View>
         </View>
       ) : null}
 
@@ -499,7 +675,7 @@ function PostCard({
             pagingEnabled
             scrollEnabled={mediaUrls.length > 1}
             showsHorizontalScrollIndicator={false}
-            style={StyleSheet.absoluteFill}
+            style={[StyleSheet.absoluteFill, Platform.OS === 'web' ? ({ touchAction: mediaUrls.length > 1 ? 'pan-x' : 'pan-y' } as any) : null]}
             onMomentumScrollEnd={(event) => {
               if (mediaWidth > 0) {
                 setMediaIndex(Math.round(event.nativeEvent.contentOffset.x / mediaWidth));
@@ -537,7 +713,9 @@ function PostCard({
         ) : null}
         <View style={styles.statusBadge}>
           <Icon color={state.color} size={15} strokeWidth={2.7} />
-          <Text style={[styles.statusBadgeText, { color: state.color }]}>{state.label}</Text>
+          <Text style={[styles.statusBadgeText, { color: state.color }]}>
+            {countdownMins !== null ? t('home.publicCountdown', { min: countdownMins }) : state.label}
+          </Text>
         </View>
         {locked ? (
           <Pressable style={styles.lockOverlay} onPress={() => onNotice?.(t('home.lockedText', { meters: item.unlockRadiusMeters }))}>
@@ -550,7 +728,9 @@ function PostCard({
         ) : null}
         <View style={styles.mediaFooter}>
           <Text style={styles.mediaPlace}>{item.city}</Text>
-          <Text style={styles.mediaDistance}>{formatDistance(item.distanceMeters, t)}</Text>
+          {formatDistance(item.distanceMeters, t) !== null ? (
+            <Text style={styles.mediaDistance}>{formatDistance(item.distanceMeters, t)}</Text>
+          ) : null}
         </View>
       </View>
 
@@ -721,7 +901,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.setlogInk,
     fontFamily: fonts.body,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '800',
     paddingVertical: 10,
   },
@@ -1130,7 +1310,7 @@ const styles = StyleSheet.create({
     flex: 1,
     color: colors.setlogInk,
     fontFamily: fonts.body,
-    fontSize: 13,
+    fontSize: 16,
     fontWeight: '800',
     paddingVertical: 10,
   },
@@ -1205,6 +1385,95 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '700',
     marginTop: 2,
+  },
+  editBox: {
+    marginHorizontal: 12,
+    marginBottom: 8,
+    backgroundColor: colors.setlogPaper,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+    borderRadius: 16,
+    padding: 12,
+    gap: 10,
+  },
+  editInput: {
+    fontFamily: fonts.body,
+    fontSize: 14,
+    color: colors.setlogInk,
+    minHeight: 60,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+    borderRadius: 10,
+    padding: 10,
+  },
+  editVisRow: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  visBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  visBadgeText: {
+    color: colors.setlogMuted,
+    fontFamily: fonts.body,
+    fontSize: 10,
+    fontWeight: '700',
+  },
+  visChip: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 20,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+    backgroundColor: colors.setlogBg,
+  },
+  visChipActive: {
+    backgroundColor: colors.setlogInk,
+    borderColor: colors.setlogInk,
+  },
+  visChipText: {
+    fontFamily: fonts.body,
+    fontSize: 11,
+    fontWeight: '800',
+    color: colors.setlogMuted,
+  },
+  visChipTextActive: {
+    color: colors.setlogPaper,
+  },
+  editActions: {
+    flexDirection: 'row',
+    justifyContent: 'flex-end',
+    gap: 8,
+  },
+  editCancelBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+  },
+  editCancelText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.setlogMuted,
+  },
+  editSaveBtn: {
+    paddingHorizontal: 14,
+    paddingVertical: 7,
+    borderRadius: 20,
+    backgroundColor: colors.setlogInk,
+  },
+  editSaveText: {
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '700',
+    color: colors.setlogPaper,
   },
 });
 

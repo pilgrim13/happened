@@ -96,6 +96,9 @@ export async function migrateDatabase(databaseUrl: string | null) {
     '009_email_tokens.sql',
     '010_postgis.sql',
     '011_recall_push.sql',
+    '012_apple_auth.sql',
+    '013_user_places.sql',
+    '014_user_public_account.sql',
   ];
   let applied = 0;
 

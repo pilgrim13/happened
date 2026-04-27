@@ -30,7 +30,7 @@ export const memoryPosts: MemoryPost[] = [
     mediaUrls: [seedMediaUrls['seolleung-cafe-2023']],
     mediaColors: ['#20313A', '#355D63', '#C7F95B'],
     accentColor: colors.lime,
-    stats: { echoes: 18, replies: 4, saves: 9 },
+    stats: { echoes: 18, replies: 0, saves: 9 },
   },
   {
     id: 'hongdae-alley-night',
@@ -50,7 +50,7 @@ export const memoryPosts: MemoryPost[] = [
     mediaUrls: [seedMediaUrls['hongdae-alley-night']],
     mediaColors: ['#1C1420', '#225C66', '#FF6F61'],
     accentColor: colors.coral,
-    stats: { echoes: 42, replies: 11, saves: 20 },
+    stats: { echoes: 42, replies: 0, saves: 20 },
   },
   {
     id: 'school-yard-2019',
@@ -70,7 +70,7 @@ export const memoryPosts: MemoryPost[] = [
     mediaUrls: [seedMediaUrls['school-yard-2019']],
     mediaColors: ['#07151A', '#286876', '#F8D84E'],
     accentColor: colors.yellow,
-    stats: { echoes: 73, replies: 19, saves: 31 },
+    stats: { echoes: 73, replies: 0, saves: 31 },
   },
   {
     id: 'river-steps-dawn',
@@ -90,7 +90,7 @@ export const memoryPosts: MemoryPost[] = [
     mediaUrls: [seedMediaUrls['river-steps-dawn']],
     mediaColors: ['#091117', '#3A6073', '#39D9F2'],
     accentColor: colors.cyan,
-    stats: { echoes: 28, replies: 6, saves: 12 },
+    stats: { echoes: 28, replies: 0, saves: 12 },
   },
 ];
 
