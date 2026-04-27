@@ -9,7 +9,7 @@ import { checkDatabase, closeDatabase } from './db';
 import { createMediaStorage } from './media';
 import { createMailer } from './mailer';
 import { createObjectStorage, mediaKey } from './storage';
-import { createRepository, RepositoryError } from './repository';
+import { createRepository, RepositoryError, reverseGeocode } from './repository';
 import {
   authHeaderSchema,
   authLoginRequestSchema,
@@ -24,6 +24,7 @@ import {
   postActionRequestSchema,
   postParamsSchema,
   placeParamsSchema,
+  placeCreateSchema,
   presignRequestSchema,
   passwordResetRequestSchema,
   passwordResetConfirmSchema,
@@ -149,7 +150,7 @@ export async function buildServer(config: ApiConfig = getConfig()) {
       request.log.warn({ issues: error.issues }, 'request validation failed');
       return reply.status(400).send({
         error: 'bad_request',
-        message: 'Request validation failed.',
+        message: '입력값을 확인해주세요.',
         issues: error.issues.map((issue) => ({
           path: issue.path.join('.'),
           message: issue.message,
@@ -234,7 +235,7 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     const token = authHeaderSchema.parse(request.headers.authorization);
     const session = await repository.getSession(token);
     if (!session) {
-      return reply.status(401).send({ error: 'auth_failed', message: 'Session is missing or expired.' });
+      return reply.status(401).send({ error: 'auth_failed', message: '세션이 없거나 만료되었어요. 다시 로그인해 주세요.' });
     }
     return { data: session };
   });
@@ -281,12 +282,12 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   // Presigned upload
   app.post('/v1/media/presign', async (request, reply) => {
     if (!objectStorage) {
-      return reply.status(503).send({ error: 'storage_unavailable', message: 'Object storage is not configured.' });
+      return reply.status(503).send({ error: 'storage_unavailable', message: '파일 저장소가 구성되어 있지 않아요.' });
     }
     const token = authHeaderSchema.parse(request.headers.authorization);
     const session = await repository.getSession(token);
     if (!session) {
-      return reply.status(401).send({ error: 'auth_failed', message: 'Authentication required.' });
+      return reply.status(401).send({ error: 'auth_failed', message: '로그인이 필요해요.' });
     }
     const body = presignRequestSchema.parse(request.body);
 
@@ -331,7 +332,7 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     const query = feedQuerySchema.parse(request.query);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
     return {
-      data: await repository.getFeed(query.mode, sessionToken, { cursor: query.cursor ?? null, limit: query.limit }),
+      data: await repository.getFeed(query.mode, sessionToken, { cursor: query.cursor ?? null, limit: query.limit }, query.lat, query.lng),
     };
   });
 
@@ -433,7 +434,30 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     return { data: await repository.markNotificationsRead(sessionToken, body.notificationIds) };
   });
 
+  // 사용자 GPS 위치 기반 장소 생성 또는 기존 장소 반환
+  app.post('/v1/places', async (request, reply) => {
+    const body = placeCreateSchema.parse(request.body);
+    const sessionToken = authHeaderSchema.parse(request.headers.authorization);
+    const session = await repository.getSession(sessionToken);
+    if (!session) {
+      return reply.status(401).send({ error: 'auth_failed', message: '로그인이 필요해요.' });
+    }
+    const place = await repository.createOrFindPlace({
+      userId: session.user.id,
+      lat: body.lat,
+      lng: body.lng,
+      name: body.name,
+    });
+    return reply.status(201).send({ data: place });
+  });
+
   app.get('/v1/places', async () => ({ data: await repository.getPlaces() }));
+
+  app.get('/v1/places/reverse-geocode', async (request) => {
+    const query = nearbyQuerySchema.parse(request.query);
+    const address = await reverseGeocode(query.lat, query.lng);
+    return { data: address };
+  });
 
   app.get('/v1/places/nearby', async (request) => {
     const query = nearbyQuerySchema.parse(request.query);
@@ -465,10 +489,10 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     const body = memoryCreateRequestSchema.parse(request.body);
     const sessionToken = authHeaderSchema.parse(request.headers.authorization);
 
-    // New flow: client supplies pre-uploaded mediaKeys (presigned PUT). We verify objects exist.
+    // S3 presigned 업로드 플로우: mediaKeys 검증 후 포스트 생성
     if (body.mediaKeys?.length) {
       if (!objectStorage) {
-        return reply.status(503).send({ error: 'storage_unavailable', message: 'Object storage not configured.' });
+        return reply.status(503).send({ error: 'storage_unavailable', message: '파일 저장소가 구성되어 있지 않아요.' });
       }
       const verified = await Promise.all(body.mediaKeys.map(async (k) => ({
         key: k,
@@ -477,10 +501,13 @@ export async function buildServer(config: ApiConfig = getConfig()) {
       })));
       const missing = verified.filter((v) => !v.exists);
       if (missing.length) {
-        return reply.status(400).send({ error: 'media_missing', message: 'Uploaded media not found in storage.', missing: missing.map((m) => m.key) });
+        return reply.status(400).send({ error: 'media_missing', message: '업로드한 미디어 파일을 찾을 수 없어요.', missing: missing.map((m) => m.key) });
       }
       const result = await repository.createMemory({
         checkInTokenId: body.checkInTokenId,
+        lat: body.lat,
+        lng: body.lng,
+        placeName: body.placeName,
         caption: body.caption,
         visibility: body.visibility,
         mediaUrl: verified[0]?.publicUrl,
@@ -491,7 +518,7 @@ export async function buildServer(config: ApiConfig = getConfig()) {
       return reply.status(201).send({ data: result });
     }
 
-    // Legacy flow (deprecated): dataURL upload through the API.
+    // dataURL 업로드 플로우 (신규 GPS 기반 + 구형 토큰 기반 모두 처리)
     const requestedMedia = body.mediaItems?.length
       ? body.mediaItems
       : body.mediaDataUrl
@@ -501,7 +528,12 @@ export async function buildServer(config: ApiConfig = getConfig()) {
       requestedMedia.map((item) => mediaStorage.saveDataUrl(item.mediaDataUrl, item.mediaFileName)),
     );
     const result = await repository.createMemory({
-      ...body,
+      checkInTokenId: body.checkInTokenId,
+      lat: body.lat,
+      lng: body.lng,
+      placeName: body.placeName,
+      caption: body.caption,
+      visibility: body.visibility,
       sessionToken,
       mediaUrl: savedMedia[0]?.url,
       mediaUrls: savedMedia.map((media) => media.url),
@@ -520,12 +552,12 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     // 현재는 payload decode 후 sub(Apple user ID)만 추출
     const parts = body.identityToken.split('.');
     if (parts.length !== 3) {
-      return reply.status(400).send({ error: 'bad_request', message: 'Invalid Apple identity token format.' });
+      return reply.status(400).send({ error: 'bad_request', message: 'Apple 로그인 토큰 형식이 올바르지 않아요.' });
     }
     const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8')) as { sub?: string; email?: string };
     const appleUserId = payload.sub;
     if (!appleUserId) {
-      return reply.status(400).send({ error: 'bad_request', message: 'Apple identity token missing sub claim.' });
+      return reply.status(400).send({ error: 'bad_request', message: 'Apple 로그인 토큰에 사용자 정보가 없어요.' });
     }
     const displayName = [body.fullName?.givenName, body.fullName?.familyName].filter(Boolean).join(' ') || null;
     const session = await repository.loginOrRegisterAppleUser({

@@ -8,6 +8,8 @@ export const feedQuerySchema = z.object({
   mode: feedModeSchema.optional(),
   cursor: z.string().optional(),
   limit: z.coerce.number().int().positive().max(100).optional(),
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
 });
 
 export const cursorQuerySchema = z.object({
@@ -27,7 +29,7 @@ export const verifyEmailConfirmSchema = z.object({ token: z.string().min(8).max(
 export const passwordResetRequestSchema = z.object({ email: z.string().trim().email().max(180) });
 export const passwordResetConfirmSchema = z.object({
   token: z.string().min(8).max(200),
-  password: z.string().min(8).max(200),
+  password: z.string().min(8, '비밀번호는 8자 이상이어야 해요').max(200, '비밀번호가 너무 깁니다'),
 });
 
 export const sessionParamsSchema = z.object({ id: z.string().min(1) });
@@ -74,9 +76,20 @@ export const checkInRequestSchema = z.object({
     .optional(),
 });
 
+export const placeCreateSchema = z.object({
+  name: z.string().trim().min(1).max(50).optional(),
+  lat: z.coerce.number().min(-90).max(90),
+  lng: z.coerce.number().min(-180).max(180),
+});
+
 export const memoryCreateRequestSchema = z.object({
-  checkInTokenId: z.string().trim().min(1),
-  caption: z.string().trim().min(1).max(500),
+  // 구형 체크인 토큰 기반 플로우 (optional로 변경)
+  checkInTokenId: z.string().trim().min(1).optional(),
+  // 신규 GPS 기반 플로우
+  lat: z.coerce.number().min(-90).max(90).optional(),
+  lng: z.coerce.number().min(-180).max(180).optional(),
+  placeName: z.string().trim().min(1).max(50).optional(),
+  caption: z.string().trim().min(1, '문구를 입력해주세요').max(500, '문구는 500자 이하로 입력해주세요'),
   visibility: visibilitySchema.default('PublicAfter1h'),
   mediaDataUrl: z.string().max(64_000_000).optional(),
   mediaFileName: z.string().trim().max(140).optional(),
@@ -90,7 +103,9 @@ export const memoryCreateRequestSchema = z.object({
     .optional(),
   mediaKeys: z.array(z.string().min(1).max(300)).min(1).max(6).optional(),
 }).refine((value) => Boolean(value.mediaDataUrl || value.mediaItems?.length || value.mediaKeys?.length), {
-  message: 'At least one photo (or mediaKey) is required.',
+  message: '사진 또는 동영상을 하나 이상 추가해주세요.',
+}).refine((value) => Boolean(value.checkInTokenId || (value.lat !== undefined && value.lng !== undefined)), {
+  message: '현장 인증 토큰 또는 위치 정보가 필요해요.',
 });
 
 export const nearbyQuerySchema = z.object({
@@ -102,50 +117,50 @@ export const nearbyQuerySchema = z.object({
 
 export const memoryUpdateRequestSchema = z
   .object({
-    caption: z.string().trim().min(1).max(500).optional(),
+    caption: z.string().trim().min(1, '문구를 입력해주세요').max(500, '문구는 500자 이하로 입력해주세요').optional(),
     visibility: visibilitySchema.optional(),
   })
   .refine((value) => value.caption !== undefined || value.visibility !== undefined, {
-    message: 'At least one post field is required.',
+    message: '수정할 항목을 하나 이상 입력해주세요.',
   });
 
 export const authRegisterRequestSchema = z.object({
-  email: z.string().trim().email().max(180),
-  displayName: z.string().trim().min(1).max(80),
+  email: z.string().trim().email('이메일 형식이 올바르지 않아요').max(180, '이메일이 너무 깁니다'),
+  displayName: z.string().trim().min(1, '이름을 입력해주세요').max(80, '이름은 80자 이하로 입력해주세요'),
   handle: z
     .string()
     .trim()
-    .min(2)
-    .max(32)
+    .min(2, '닉네임은 2자 이상이어야 해요')
+    .max(32, '닉네임은 32자 이하로 입력해주세요')
     .regex(/^[\p{L}\p{N}_.]+$/u, '닉네임은 한글/영문/숫자/언더스코어/점만 사용 가능합니다.'),
   // Add a refined password schema for register
-  password: z.string().min(8).max(200).refine(
+  password: z.string().min(8, '비밀번호는 8자 이상이어야 해요').max(200, '비밀번호가 너무 깁니다').refine(
     (v) => /[A-Za-z]/.test(v) && /\d/.test(v) || v.length >= 12,
-    { message: 'Password must contain letters and numbers, or be 12+ characters.' },
+    { message: '비밀번호는 영문+숫자 조합이거나 12자 이상이어야 해요.' },
   ),
 }); 
 
 export const profileUpdateRequestSchema = z
   .object({
-    displayName: z.string().trim().min(1).max(80).optional(),
+    displayName: z.string().trim().min(1, '이름을 입력해주세요').max(80, '이름은 80자 이하로 입력해주세요').optional(),
     handle: z
       .string()
       .trim()
-      .min(2)
-      .max(32)
-      .regex(/^[\p{L}\p{N}_.]+$/u, 'Handle must contain only letters, numbers, underscore, or dot.')
+      .min(2, '닉네임은 2자 이상이어야 해요')
+      .max(32, '닉네임은 32자 이하로 입력해주세요')
+      .regex(/^[\p{L}\p{N}_.]+$/u, '닉네임은 한글/영문/숫자/언더스코어/점만 사용 가능합니다.')
       .optional(),
-    bio: z.string().trim().max(160).optional(),
+    bio: z.string().trim().max(160, '소개는 160자 이하로 입력해주세요').optional(),
     avatarDataUrl: z.string().max(12_000_000).optional(),
     avatarFileName: z.string().trim().max(140).optional(),
   })
   .refine((value) => value.displayName !== undefined || value.handle !== undefined || value.bio !== undefined || value.avatarDataUrl !== undefined, {
-    message: 'At least one profile field is required.',
+    message: '수정할 프로필 항목을 하나 이상 입력해주세요.',
   });
 
 export const authLoginRequestSchema = z.object({
-  email: z.string().trim().email().max(180),
-  password: z.string().min(1).max(200),
+  email: z.string().trim().email('이메일 형식이 올바르지 않아요').max(180, '이메일이 너무 깁니다'),
+  password: z.string().min(1, '비밀번호를 입력해주세요').max(200),
 });
 
 export const authHeaderSchema = z
@@ -183,6 +198,7 @@ export const appleAuthSchema = z.object({
     .optional(),
 });
 
+export type PlaceCreateRequest = z.infer<typeof placeCreateSchema>;
 export type FeedModeInput = z.infer<typeof feedModeSchema>;
 export type PostActionRequest = z.infer<typeof postActionRequestSchema>;
 export type CheckInRequest = z.infer<typeof checkInRequestSchema>;

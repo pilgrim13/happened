@@ -19,7 +19,7 @@ export type MemoryPost = {
   placeId?: string;
   placeName: string;
   city: string;
-  distanceMeters: number;
+  distanceMeters: number | null;
   unlockRadiusMeters: number;
   unlockState: UnlockState;
   visibility: Visibility;

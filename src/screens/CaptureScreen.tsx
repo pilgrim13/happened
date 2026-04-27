@@ -1,28 +1,21 @@
 import * as Haptics from 'expo-haptics';
 import * as ImagePicker from 'expo-image-picker';
 import { LinearGradient } from 'expo-linear-gradient';
-import { Camera, Check, Clock, ImagePlus, MapPin, RotateCcw, ShieldCheck, Trash2 } from 'lucide-react-native';
-import { useState } from 'react';
+import { Camera, Check, Clock, Globe, ImagePlus, Lock, RotateCcw, Trash2 } from 'lucide-react-native';
+import { useEffect, useState } from 'react';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MediaRenderer } from '../components/MediaRenderer';
 import { useVisualViewportHeight } from '../hooks/useVisualViewportHeight';
 import { translateVisibility, useI18n } from '../i18n';
+import { getCurrentLocation } from '../services/location';
+import { fetchReverseGeocode } from '../services/happenedApi';
 import { colors, fonts, radius } from '../theme/tokens';
-import type { CheckInToken, Visibility } from '../types/happened';
+import type { Visibility } from '../types/happened';
 
 type Props = {
-  placeName: string | null;
-  displayPlaceName: string;
-  token: CheckInToken | null;
-  locationLabel?: string;
-  distanceLabel?: string;
-  verificationBlockedMessage?: string | null;
-  onIssueToken: () => void | Promise<void>;
-  onUpload: (input: { visibility: Visibility; caption: string; mediaItems?: Array<{ mediaDataUrl: string; mediaFileName?: string }> }) => void | Promise<void>;
-  onOpenPlace?: (placeName: string) => void;
-  onOpenMap?: () => void;
+  onUpload: (input: { visibility: Visibility; caption: string; placeName?: string; mediaItems?: Array<{ mediaDataUrl: string; mediaFileName?: string }> }) => void | Promise<void>;
   onNotice?: (message: string) => void;
 };
 
@@ -155,20 +148,35 @@ async function imagePickerAssetToMedia(asset: ImagePicker.ImagePickerAsset): Pro
   return null;
 }
 
-export function CaptureScreen({ placeName, displayPlaceName, token, locationLabel, distanceLabel, verificationBlockedMessage, onIssueToken, onUpload, onOpenPlace, onOpenMap, onNotice }: Props) {
+export function CaptureScreen({ onUpload, onNotice }: Props) {
   const insets = useSafeAreaInsets();
   const { t } = useI18n();
   const viewportHeight = useVisualViewportHeight();
   const viewfinderHeight = Math.max(260, Math.min(360, viewportHeight - 500));
   const [visibility, setVisibility] = useState<Visibility>('PublicAfter1h');
   const [caption, setCaption] = useState(t('capture.defaultCaption'));
+  const [placeName, setPlaceName] = useState('');
   const [mediaItems, setMediaItems] = useState<PickedMedia[]>([]);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
   const [working, setWorking] = useState(false);
-  const activeToken = placeName && token?.placeName === placeName ? token : null;
   const activeMedia = mediaItems[Math.min(activeMediaIndex, Math.max(0, mediaItems.length - 1))];
-  const canPost = Boolean(activeToken && mediaItems.length);
-  const canVerify = Boolean(placeName && !verificationBlockedMessage);
+  const canPost = mediaItems.length > 0;
+
+  // 진입 시 현재 위치 → 역지오코딩 → 장소명 자동 입력
+  useEffect(() => {
+    let cancelled = false;
+    setPlaceName(t('capture.locationLoading'));
+    getCurrentLocation()
+      .then((loc) => fetchReverseGeocode(loc.latitude, loc.longitude))
+      .then((address) => {
+        if (!cancelled) setPlaceName(address);
+      })
+      .catch(() => {
+        if (!cancelled) setPlaceName('');
+      });
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handlePress = (action: () => void | Promise<void>) => {
     Haptics.impactAsync(Haptics.ImpactFeedbackStyle.Medium).catch(() => undefined);
@@ -263,21 +271,6 @@ export function CaptureScreen({ placeName, displayPlaceName, token, locationLabe
   };
 
   const submitUpload = async () => {
-    if (!placeName) {
-      onNotice?.(locationLabel ?? t('app.noUploadablePlace'));
-      onOpenMap?.();
-      return;
-    }
-
-    if (!activeToken) {
-      if (verificationBlockedMessage) {
-        onNotice?.(verificationBlockedMessage);
-        return;
-      }
-      await onIssueToken();
-      return;
-    }
-
     if (!mediaItems.length) {
       onNotice?.(t('capture.photoRequired'));
       await capturePhoto();
@@ -293,16 +286,20 @@ export function CaptureScreen({ placeName, displayPlaceName, token, locationLabe
       await onUpload({
         visibility,
         caption: caption.trim() || t('capture.defaultCaption'),
+        placeName: placeName.trim() || undefined,
         mediaItems: mediaItems.map((item) => ({
           mediaDataUrl: item.dataUrl,
           mediaFileName: item.fileName,
         })),
       });
       clearMedia();
+      setPlaceName('');
     } finally {
       setWorking(false);
     }
   };
+
+  const controlsBottom = Math.max(insets.bottom + 24, 24);
 
   return (
     <LinearGradient colors={[colors.setlogBg, '#F8F7FF', '#FFF2F5']} style={styles.screen}>
@@ -311,21 +308,22 @@ export function CaptureScreen({ placeName, displayPlaceName, token, locationLabe
           styles.content,
           {
             paddingTop: insets.top + 18,
-            paddingBottom: Math.max(insets.bottom + 126, 126),
+            paddingBottom: controlsBottom + 76 + 16,
           },
         ]}
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator={false}
       >
         <View style={styles.header}>
-          <Pressable disabled={!placeName} onPress={() => placeName && onOpenPlace?.(placeName)}>
-            <Text style={styles.kicker}>{t('capture.kicker')}</Text>
-            <Text style={styles.title}>{displayPlaceName}</Text>
-          </Pressable>
-          <View style={styles.radiusPill}>
-            <MapPin color={colors.setlogInk} size={15} strokeWidth={2.8} />
-            <Text style={styles.radiusText}>{distanceLabel ?? t('capture.distanceUnknown')}</Text>
-          </View>
+          <Text style={styles.kicker}>{t('capture.kicker')}</Text>
+          <TextInput
+            value={placeName}
+            onChangeText={setPlaceName}
+            placeholder={t('capture.currentLocation')}
+            placeholderTextColor={colors.setlogMuted}
+            style={styles.title}
+            maxLength={50}
+          />
         </View>
 
         <Pressable style={[styles.viewfinder, { height: viewfinderHeight }]} onPress={() => handlePress(capturePhoto)}>
@@ -371,28 +369,6 @@ export function CaptureScreen({ placeName, displayPlaceName, token, locationLabe
           </View>
         ) : null}
 
-        <View style={styles.tokenPanel}>
-          <View style={styles.tokenIcon}>
-            <ShieldCheck color={activeToken ? colors.setlogMint : canVerify ? colors.setlogMuted : colors.setlogPink} size={22} strokeWidth={2.4} />
-          </View>
-          <View style={styles.tokenCopy}>
-            <Text style={styles.tokenTitle}>{activeToken ? t('capture.tokenActive') : canVerify ? t('capture.tokenRequired') : t('capture.noPlaceTitle')}</Text>
-            <Text style={styles.tokenMeta}>
-              {activeToken
-                ? t('capture.tokenMeta', { expires: activeToken.expiresInLabel, uploads: activeToken.uploadsRemaining })
-                : locationLabel ?? t('capture.tokenDefault')}
-            </Text>
-          </View>
-          <Clock color={canVerify ? colors.setlogMuted : colors.setlogPink} size={21} />
-        </View>
-
-        {!canVerify ? (
-          <Pressable style={styles.mapSelectButton} onPress={onOpenMap}>
-            <MapPin color={colors.setlogInk} size={17} strokeWidth={2.6} />
-            <Text style={styles.mapSelectText}>{t('capture.selectPlaceOnMap')}</Text>
-          </Pressable>
-        ) : null}
-
         <TextInput
           value={caption}
           onChangeText={setCaption}
@@ -402,25 +378,50 @@ export function CaptureScreen({ placeName, displayPlaceName, token, locationLabe
         />
 
         <View style={styles.visibilityRow}>
-          {(['Followers', 'PublicAfter1h', 'Public'] as const).map((item) => (
-            <Pressable key={item} style={[styles.visibilityPill, visibility === item && styles.visibilityPillActive]} onPress={() => setVisibility(item)}>
-              <Text style={[styles.visibilityText, visibility === item && styles.visibilityTextActive]}>{translateVisibility(item, t)}</Text>
+          {([
+            { key: 'Followers', Icon: Lock },
+            { key: 'PublicAfter1h', Icon: Clock },
+            { key: 'Public', Icon: Globe },
+          ] as const).map(({ key, Icon }) => (
+            <Pressable
+              key={key}
+              style={[styles.visibilityCard, visibility === key && styles.visibilityCardActive]}
+              onPress={() => setVisibility(key)}
+            >
+              <Icon
+                color={visibility === key ? colors.setlogInk : colors.setlogMuted}
+                size={15}
+                strokeWidth={2.4}
+              />
+              <Text style={[styles.visibilityLabel, visibility === key && styles.visibilityLabelActive]}>
+                {t(`visibility.${key}.label`)}
+              </Text>
+              <Text style={styles.visibilityHelp} numberOfLines={2}>
+                {t(`visibility.${key}.help`)}
+              </Text>
             </Pressable>
           ))}
         </View>
-
-        <View style={styles.controls}>
-          <Pressable style={styles.sideButton} onPress={() => handlePress(capturePhoto)}>
-            <Camera color={colors.setlogInk} size={24} strokeWidth={2.4} />
-          </Pressable>
-          <Pressable style={[styles.postActionButton, canPost && styles.postActionButtonReady, !canVerify && styles.postActionButtonBlocked, working && styles.disabledButton]} disabled={working} onPress={() => handlePress(submitUpload)}>
-            <Text style={[styles.postActionText, canPost && styles.postActionTextReady]}>{!canVerify ? t('capture.selectPlaceOnMap') : !activeToken ? t('capture.verifyPlace') : canPost ? t('capture.postMemory') : t('capture.addPhoto')}</Text>
-          </Pressable>
-          <Pressable style={styles.sideButton} onPress={() => handlePress(pickMedia)}>
-            <ImagePlus color={colors.setlogInk} size={25} strokeWidth={2.4} />
-          </Pressable>
-        </View>
       </ScrollView>
+
+      {/* 항상 표시: 하단 고정 포스팅 버튼 */}
+      <View style={[styles.controls, { bottom: controlsBottom }]}>
+        <Pressable style={styles.sideButton} onPress={() => handlePress(capturePhoto)}>
+          <Camera color={colors.setlogInk} size={24} strokeWidth={2.4} />
+        </Pressable>
+        <Pressable
+          style={[styles.postActionButton, canPost && styles.postActionButtonReady, working && styles.disabledButton]}
+          disabled={working}
+          onPress={() => handlePress(submitUpload)}
+        >
+          <Text style={[styles.postActionText, canPost && styles.postActionTextReady]}>
+            {canPost ? t('capture.postMemory') : t('capture.addPhoto')}
+          </Text>
+        </Pressable>
+        <Pressable style={styles.sideButton} onPress={() => handlePress(pickMedia)}>
+          <ImagePlus color={colors.setlogInk} size={25} strokeWidth={2.4} />
+        </Pressable>
+      </View>
     </LinearGradient>
   );
 }
@@ -434,9 +435,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
   },
   header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
     marginBottom: 16,
   },
   kicker: {
@@ -453,22 +451,7 @@ const styles = StyleSheet.create({
     lineHeight: 33,
     fontWeight: '900',
     marginTop: 4,
-    maxWidth: 250,
-  },
-  radiusPill: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 5,
-    borderRadius: radius.pill,
-    backgroundColor: colors.setlogYellow,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-  },
-  radiusText: {
-    color: colors.setlogInk,
-    fontFamily: fonts.body,
-    fontSize: 12,
-    fontWeight: '900',
+    padding: 0,
   },
   viewfinder: {
     minHeight: 300,
@@ -566,61 +549,10 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: '900',
   },
-  tokenPanel: {
-    minHeight: 72,
-    borderRadius: 22,
-    borderColor: colors.setlogLine,
-    borderWidth: 1,
-    backgroundColor: colors.setlogPaper,
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingHorizontal: 13,
-    marginTop: 14,
-  },
-  tokenIcon: {
-    width: 42,
-    height: 42,
-    borderRadius: 21,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(135, 240, 182, 0.2)',
-    marginRight: 11,
-  },
-  tokenCopy: {
-    flex: 1,
-  },
-  tokenTitle: {
-    color: colors.setlogInk,
-    fontFamily: fonts.body,
-    fontSize: 15,
-    fontWeight: '900',
-  },
-  tokenMeta: {
-    color: colors.setlogMuted,
-    fontFamily: fonts.body,
-    fontSize: 12,
-    fontWeight: '700',
-    marginTop: 2,
-  },
-  mapSelectButton: {
-    minHeight: 42,
-    borderRadius: 18,
-    borderColor: colors.setlogPink,
-    borderWidth: 1,
-    backgroundColor: 'rgba(255, 183, 200, 0.16)',
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 7,
-    marginTop: 10,
-  },
-  mapSelectText: {
-    color: colors.setlogInk,
-    fontFamily: fonts.body,
-    fontSize: 13,
-    fontWeight: '900',
-  },
   controls: {
+    position: 'absolute',
+    left: 16,
+    right: 16,
     height: 76,
     flexDirection: 'row',
     alignItems: 'center',
@@ -629,7 +561,7 @@ const styles = StyleSheet.create({
   },
   visibilityRow: {
     flexDirection: 'row',
-    gap: 9,
+    gap: 8,
     marginTop: 10,
   },
   captionInput: {
@@ -645,28 +577,40 @@ const styles = StyleSheet.create({
     marginTop: 10,
     backgroundColor: colors.setlogPaper,
   },
-  visibilityPill: {
+  visibilityCard: {
     flex: 1,
-    height: 42,
+    minHeight: 80,
     borderRadius: 18,
     borderColor: colors.setlogLine,
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
+    paddingHorizontal: 6,
+    paddingVertical: 10,
+    gap: 4,
     backgroundColor: colors.setlogPaper,
   },
-  visibilityPillActive: {
+  visibilityCardActive: {
     borderColor: colors.setlogMint,
     backgroundColor: 'rgba(135, 240, 182, 0.28)',
   },
-  visibilityText: {
+  visibilityLabel: {
     color: colors.setlogMuted,
     fontFamily: fonts.body,
-    fontSize: 13,
+    fontSize: 11,
     fontWeight: '900',
+    textAlign: 'center',
   },
-  visibilityTextActive: {
+  visibilityLabelActive: {
     color: colors.setlogInk,
+  },
+  visibilityHelp: {
+    color: colors.setlogFaint,
+    fontFamily: fonts.body,
+    fontSize: 10,
+    fontWeight: '700',
+    textAlign: 'center',
+    lineHeight: 13,
   },
   sideButton: {
     width: 52,
@@ -692,9 +636,6 @@ const styles = StyleSheet.create({
     backgroundColor: colors.setlogMint,
     borderColor: colors.setlogMint,
   },
-  postActionButtonBlocked: {
-    borderColor: colors.setlogLine,
-  },
   disabledButton: {
     opacity: 0.58,
   },
@@ -706,11 +647,5 @@ const styles = StyleSheet.create({
   },
   postActionTextReady: {
     color: colors.setlogInk,
-  },
-  modeText: {
-    color: colors.setlogInk,
-    fontFamily: fonts.body,
-    fontSize: 14,
-    fontWeight: '900',
   },
 });

@@ -416,11 +416,11 @@ function createLocalRepository(store = new LocalStore()) {
     const normalizedHandle = handle.trim().replace(/^@/, '').toLowerCase();
 
     if (store.data.users.some((user) => normalize(user.email) === normalizedEmail)) {
-      throw new RepositoryError('email_taken', 'Email is already registered.');
+      throw new RepositoryError('email_taken', '이미 사용 중인 이메일이에요.');
     }
 
     if (store.data.users.some((user) => normalize(user.handle) === normalizedHandle)) {
-      throw new RepositoryError('handle_taken', 'Handle is already taken.');
+      throw new RepositoryError('handle_taken', '이미 사용 중인 닉네임이에요.');
     }
 
     const passwordDigest = hashPassword(password);
@@ -442,7 +442,7 @@ function createLocalRepository(store = new LocalStore()) {
     const user = store.data.users.find((candidate) => normalize(candidate.email) === normalize(email));
 
     if (!user || !verifyPassword(password, user.passwordSalt, user.passwordHash)) {
-      throw new RepositoryError('auth_failed', 'Email or password is incorrect.');
+      throw new RepositoryError('auth_failed', '이메일 또는 비밀번호가 일치하지 않아요.');
     }
 
     return createSession(user);
@@ -480,7 +480,7 @@ function createLocalRepository(store = new LocalStore()) {
     const viewer = getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to update your profile.');
+      throw new RepositoryError('auth_failed', '프로필을 수정하려면 로그인이 필요해요.');
     }
 
     const nextHandle = handle ? normalizeHandle(handle) : viewer.handle;
@@ -488,7 +488,7 @@ function createLocalRepository(store = new LocalStore()) {
     const existingHandleUser = store.data.users.find((user) => user.id !== viewer.id && normalize(user.handle) === nextHandle);
 
     if (existingHandleUser) {
-      throw new RepositoryError('handle_taken', 'Handle is already taken.');
+      throw new RepositoryError('handle_taken', '이미 사용 중인 닉네임이에요.');
     }
 
     viewer.displayName = nextDisplayName;
@@ -512,7 +512,7 @@ function createLocalRepository(store = new LocalStore()) {
     const session = getSession(sessionToken ?? null);
 
     if (!session) {
-      throw new RepositoryError('auth_failed', 'Session is missing or expired.');
+      throw new RepositoryError('auth_failed', '세션이 없거나 만료되었어요. 다시 로그인해 주세요.');
     }
 
     return {
@@ -602,7 +602,7 @@ function createLocalRepository(store = new LocalStore()) {
     const post = store.data.posts.find((candidate) => candidate.id === postId);
 
     if (!post) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     const user = getUserFromSession(sessionToken ?? null);
@@ -697,7 +697,7 @@ function createLocalRepository(store = new LocalStore()) {
     const primaryPost = relatedPosts[0];
 
     if (!bubble && !primaryPost && relatedPosts.length === 0) {
-      throw new RepositoryError('place_not_found', `No place matched "${placeKey}".`);
+      throw new RepositoryError('place_not_found', `"${placeKey}" 장소를 찾을 수 없어요.`);
     }
 
     return {
@@ -762,36 +762,77 @@ function createLocalRepository(store = new LocalStore()) {
     return toTokenResponse(token);
   }
 
-  function createMemory({
+  async function createMemory({
     checkInTokenId,
+    lat,
+    lng,
+    placeName: inputPlaceName,
     caption,
     visibility,
     mediaUrl,
     mediaUrls,
     sessionToken,
   }: {
-    checkInTokenId: string;
+    checkInTokenId?: string;
+    lat?: number;
+    lng?: number;
+    placeName?: string;
     caption: string;
     visibility: Visibility;
     mediaUrl?: string;
     mediaUrls?: string[];
     sessionToken?: string | null;
   }) {
+    const user = getUserFromSession(sessionToken ?? null);
+
+    // 신규 GPS 기반 플로우
+    if (lat !== undefined && lng !== undefined) {
+      const place = await createOrFindPlace({ userId: user?.id ?? null, lat, lng, name: inputPlaceName });
+      const now = new Date();
+      const memory: MemoryPost = {
+        id: `memory-${randomUUID()}`,
+        mode: 'Memories',
+        authorId: user?.id,
+        authorName: user?.displayName ?? 'You',
+        authorHandle: user ? `@${user.handle}` : '@you',
+        placeId: place.id,
+        placeName: place.name,
+        city: 'Seoul',
+        distanceMeters: 0,
+        unlockRadiusMeters: 200,
+        unlockState: 'open',
+        visibility,
+        createdAt: now.toISOString(),
+        caption,
+        timeLabel: 'just now',
+        filmStamp: `${formatFilmStamp(now)} / GPS`,
+        recallLabel: 'Saved at this place',
+        mediaUrl,
+        mediaUrls: mediaUrls?.length ? mediaUrls : mediaUrl ? [mediaUrl] : [],
+        mediaColors: ['#07151A', '#2B5B61', '#C7F95B'],
+        accentColor: colors.lime,
+        stats: { echoes: 0, replies: 0, saves: 0 },
+      };
+      store.data.posts.unshift(memory);
+      store.save();
+      return { memory };
+    }
+
+    // 구형 체크인 토큰 기반 플로우
     const token = store.data.checkInTokens.find((candidate) => candidate.id === checkInTokenId);
 
     if (!token) {
-      throw new RepositoryError('token_not_found', 'Check-in token was not found.');
+      throw new RepositoryError('token_not_found', '현장 인증 토큰을 찾을 수 없어요.');
     }
 
     if (token.expiresAt && new Date(token.expiresAt).getTime() <= Date.now()) {
-      throw new RepositoryError('token_expired', 'Check-in token has expired.');
+      throw new RepositoryError('token_expired', '현장 인증이 만료되었어요. 다시 인증해 주세요.');
     }
 
     if (token.uploadsRemaining <= 0) {
-      throw new RepositoryError('token_spent', 'Check-in token has no uploads remaining.');
+      throw new RepositoryError('token_spent', '현장 인증 게시 가능 횟수가 없어요.');
     }
 
-    const user = getUserFromSession(sessionToken ?? null);
     token.uploadsRemaining -= 1;
 
     const now = new Date();
@@ -842,17 +883,17 @@ function createLocalRepository(store = new LocalStore()) {
     const viewer = getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to edit posts.');
+      throw new RepositoryError('auth_failed', '게시물을 수정하려면 로그인이 필요해요.');
     }
 
     const post = store.data.posts.find((candidate) => candidate.id === postId);
 
     if (!post) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     if (post.authorId !== viewer.id) {
-      throw new RepositoryError('post_owner_required', 'You can only edit your own posts.');
+      throw new RepositoryError('post_owner_required', '내 게시물만 수정할 수 있어요.');
     }
 
     if (caption !== undefined) {
@@ -874,18 +915,18 @@ function createLocalRepository(store = new LocalStore()) {
     const viewer = getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to delete posts.');
+      throw new RepositoryError('auth_failed', '게시물을 삭제하려면 로그인이 필요해요.');
     }
 
     const postIndex = store.data.posts.findIndex((candidate) => candidate.id === postId);
     const post = store.data.posts[postIndex];
 
     if (!post) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     if (post.authorId !== viewer.id) {
-      throw new RepositoryError('post_owner_required', 'You can only delete your own posts.');
+      throw new RepositoryError('post_owner_required', '내 게시물만 삭제할 수 있어요.');
     }
 
     store.data.posts.splice(postIndex, 1);
@@ -949,7 +990,7 @@ function createLocalRepository(store = new LocalStore()) {
     const firstPost = authoredPosts[0];
 
     if (!firstPost) {
-      throw new RepositoryError('profile_not_found', 'Profile was not found.');
+      throw new RepositoryError('profile_not_found', '프로필을 찾을 수 없어요.');
     }
 
     return buildProfile({
@@ -975,7 +1016,7 @@ function createLocalRepository(store = new LocalStore()) {
     const profileUser = findProfileUser(handleOrId);
 
     if (!profileUser) {
-      throw new RepositoryError('profile_not_found', 'Profile was not found.');
+      throw new RepositoryError('profile_not_found', '프로필을 찾을 수 없어요.');
     }
 
     const blockState = getBlockState(viewer, profileUser.id);
@@ -1007,17 +1048,17 @@ function createLocalRepository(store = new LocalStore()) {
     const viewer = getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to follow people.');
+      throw new RepositoryError('auth_failed', '팔로우하려면 로그인이 필요해요.');
     }
 
     const targetUser = findProfileUser(handleOrId);
 
     if (!targetUser) {
-      throw new RepositoryError('profile_not_found', 'Profile was not found.');
+      throw new RepositoryError('profile_not_found', '프로필을 찾을 수 없어요.');
     }
 
     if (targetUser.id === viewer.id) {
-      throw new RepositoryError('follow_self', 'You cannot follow yourself.');
+      throw new RepositoryError('follow_self', '자기 자신을 팔로우할 수 없어요.');
     }
 
     const existingIndex = store.data.follows.findIndex((follow) => follow.followerId === viewer.id && follow.followingId === targetUser.id);
@@ -1046,17 +1087,17 @@ function createLocalRepository(store = new LocalStore()) {
     const viewer = getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to block people.');
+      throw new RepositoryError('auth_failed', '차단하려면 로그인이 필요해요.');
     }
 
     const targetUser = findProfileUser(handleOrId);
 
     if (!targetUser) {
-      throw new RepositoryError('profile_not_found', 'Profile was not found.');
+      throw new RepositoryError('profile_not_found', '프로필을 찾을 수 없어요.');
     }
 
     if (targetUser.id === viewer.id) {
-      throw new RepositoryError('block_self', 'You cannot block yourself.');
+      throw new RepositoryError('block_self', '자기 자신을 차단할 수 없어요.');
     }
 
     const existingIndex = store.data.blocks.findIndex((block) => block.blockerId === viewer.id && block.blockedId === targetUser.id);
@@ -1092,7 +1133,7 @@ function createLocalRepository(store = new LocalStore()) {
     const viewer = getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to view safety settings.');
+      throw new RepositoryError('auth_failed', '안전 설정을 보려면 로그인이 필요해요.');
     }
 
     const actorKey = getActorKey(viewer, sessionToken);
@@ -1170,7 +1211,7 @@ function createLocalRepository(store = new LocalStore()) {
     const post = store.data.posts.find((candidate) => candidate.id === postId);
 
     if (!post) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     const viewer = getUserFromSession(sessionToken ?? null);
@@ -1188,24 +1229,24 @@ function createLocalRepository(store = new LocalStore()) {
     const viewer = getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to delete replies.');
+      throw new RepositoryError('auth_failed', '댓글을 삭제하려면 로그인이 필요해요.');
     }
 
     const post = store.data.posts.find((candidate) => candidate.id === postId);
 
     if (!post) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     const index = store.data.postActions.findIndex((action) => action.id === commentId && action.postId === postId && action.action === 'reply');
     const comment = store.data.postActions[index];
 
     if (!comment) {
-      throw new RepositoryError('comment_not_found', 'Reply was not found.');
+      throw new RepositoryError('comment_not_found', '댓글을 찾을 수 없어요.');
     }
 
     if (comment.userId !== viewer.id && post.authorId !== viewer.id) {
-      throw new RepositoryError('auth_failed', 'You can only delete your own replies.');
+      throw new RepositoryError('auth_failed', '내 댓글만 삭제할 수 있어요.');
     }
 
     store.data.postActions.splice(index, 1);
@@ -1270,7 +1311,7 @@ function createLocalRepository(store = new LocalStore()) {
     const viewer = getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to update notifications.');
+      throw new RepositoryError('auth_failed', '알림 설정을 변경하려면 로그인이 필요해요.');
     }
 
     const visibleNotifications = getNotifications(sessionToken);
@@ -1311,6 +1352,35 @@ function createLocalRepository(store = new LocalStore()) {
       }));
   }
 
+  async function createOrFindPlace({ userId, lat, lng, name }: { userId: string | null; lat: number; lng: number; name?: string }): Promise<PlaceBubble> {
+    // 50m 이내 같은 사용자의 장소 중복 체크
+    if (userId) {
+      const dup = store.data.places.find((p) => {
+        if (!p.coordinates) return false;
+        return distanceMeters({ latitude: lat, longitude: lng }, p.coordinates) <= 50;
+      });
+      if (dup) return dup;
+    }
+    const resolvedName = name?.trim() || await reverseGeocode(lat, lng);
+    const newPlace: PlaceBubble = {
+      id: `place-${randomUUID()}`,
+      name: resolvedName,
+      placeName: resolvedName,
+      city: 'Seoul',
+      subtitle: '',
+      coordinates: { latitude: lat, longitude: lng },
+      x: 0,
+      y: 0,
+      intensity: 0,
+      unlocked: true,
+      unlockRadiusMeters: 200,
+      uploadRadiusMeters: 200,
+    };
+    store.data.places.push(newPlace);
+    store.save();
+    return newPlace;
+  }
+
   // S3 sprint stubs for local repository — these features require Postgres.
   function notImplementedLocal(): never {
     throw new RepositoryError('not_implemented' as RepositoryErrorCode, 'Feature requires DATABASE_URL (Postgres).');
@@ -1348,6 +1418,7 @@ function createLocalRepository(store = new LocalStore()) {
     getTimeline,
     issueCheckIn,
     createMemory,
+    createOrFindPlace,
     findNearbyPlaces,
     // push / recall — in-memory fallback
     registerPushToken: async (_sessionToken: string | null, _token: string, _platform: string) => ({ ok: true }),
@@ -1385,6 +1456,7 @@ type DbPlaceRow = {
   unlocked: boolean;
   unlock_radius_meters: number;
   upload_radius_meters: number;
+  created_by_user_id?: string | null;
 };
 
 type DbPostRow = {
@@ -1396,7 +1468,7 @@ type DbPostRow = {
   place_id: string | null;
   place_name: string;
   city: string;
-  distance_meters: number;
+  distance_meters: number | null;
   unlock_radius_meters: number;
   unlock_state: MemoryPost['unlockState'];
   visibility: Visibility;
@@ -1476,7 +1548,7 @@ function rowToPost(row: DbPostRow): MemoryPost {
     placeId: row.place_id ?? undefined,
     placeName: row.place_name,
     city: row.city,
-    distanceMeters: row.distance_meters,
+    distanceMeters: row.distance_meters ?? null,
     unlockRadiusMeters: row.unlock_radius_meters,
     unlockState: row.unlock_state,
     visibility: row.visibility,
@@ -1750,11 +1822,11 @@ function createPostgresRepository(databaseUrl: string) {
     ]);
 
     if (existing.rows.some((user) => normalize(user.email) === normalizedEmail)) {
-      throw new RepositoryError('email_taken', 'Email is already registered.');
+      throw new RepositoryError('email_taken', '이미 사용 중인 이메일이에요.');
     }
 
     if (existing.rows.some((user) => normalize(user.handle) === normalizedHandle)) {
-      throw new RepositoryError('handle_taken', 'Handle is already taken.');
+      throw new RepositoryError('handle_taken', '이미 사용 중인 닉네임이에요.');
     }
 
     const passwordDigest = hashPassword(password);
@@ -1781,7 +1853,7 @@ function createPostgresRepository(databaseUrl: string) {
     const row = result.rows[0];
 
     if (!row || !verifyPassword(password, row.password_salt, row.password_hash)) {
-      throw new RepositoryError('auth_failed', 'Email or password is incorrect.');
+      throw new RepositoryError('auth_failed', '이메일 또는 비밀번호가 일치하지 않아요.');
     }
 
     return createSession(rowToUser(row), { userAgent: userAgent ?? null, ip: ip ?? null });
@@ -1795,7 +1867,7 @@ function createPostgresRepository(databaseUrl: string) {
 
   async function listSessions(viewerToken: string | null) {
     const viewer = await getUserFromSession(viewerToken);
-    if (!viewer) throw new RepositoryError('auth_failed', 'Authentication required.');
+    if (!viewer) throw new RepositoryError('auth_failed', '로그인이 필요해요.');
     const r = await queryDatabase<{ id: string; user_agent: string | null; ip: string | null; created_at: Date | string; last_seen_at: Date | string | null; expires_at: Date | string }>(
       databaseUrl,
       'select id, user_agent, ip, created_at, last_seen_at, expires_at from sessions where user_id = $1 and revoked_at is null and expires_at > now() order by created_at desc',
@@ -1814,7 +1886,7 @@ function createPostgresRepository(databaseUrl: string) {
 
   async function revokeSession(viewerToken: string | null, sessionId: string) {
     const viewer = await getUserFromSession(viewerToken);
-    if (!viewer) throw new RepositoryError('auth_failed', 'Authentication required.');
+    if (!viewer) throw new RepositoryError('auth_failed', '로그인이 필요해요.');
     const r = await queryDatabase(databaseUrl, 'update sessions set revoked_at = now() where id = $1 and user_id = $2 and revoked_at is null', [sessionId, viewer.id]);
     return { revoked: r.rowCount ?? 0 };
   }
@@ -1826,7 +1898,7 @@ function createPostgresRepository(databaseUrl: string) {
 
   async function requestEmailVerification(viewerToken: string | null) {
     const viewer = await getUserFromSession(viewerToken);
-    if (!viewer) throw new RepositoryError('auth_failed', 'Authentication required.');
+    if (!viewer) throw new RepositoryError('auth_failed', '로그인이 필요해요.');
     const token = randomBytes(32).toString('hex');
     const id = randomUUID();
     const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
@@ -1842,9 +1914,9 @@ function createPostgresRepository(databaseUrl: string) {
         [hash],
       );
       const row = r.rows[0];
-      if (!row) throw new RepositoryError('token_not_found', 'Verification token is invalid.');
-      if (row.consumed_at) throw new RepositoryError('token_spent', 'Verification token already used.');
-      if (new Date(row.expires_at).getTime() <= Date.now()) throw new RepositoryError('token_expired', 'Verification token expired.');
+      if (!row) throw new RepositoryError('token_not_found', '이메일 인증 토큰이 유효하지 않아요.');
+      if (row.consumed_at) throw new RepositoryError('token_spent', '이미 사용된 이메일 인증 토큰이에요.');
+      if (new Date(row.expires_at).getTime() <= Date.now()) throw new RepositoryError('token_expired', '이메일 인증 토큰이 만료되었어요.');
       await client.query('update email_verification_tokens set consumed_at = now() where id = $1', [row.id]);
       await client.query('update users set email_verified_at = now() where id = $1', [row.user_id]);
       return { ok: true, userId: row.user_id };
@@ -1866,7 +1938,7 @@ function createPostgresRepository(databaseUrl: string) {
   }
 
   async function confirmPasswordReset(token: string, newPassword: string) {
-    if (newPassword.length < 8) throw new RepositoryError('weak_password' as any, 'Password must be at least 8 characters.');
+    if (newPassword.length < 8) throw new RepositoryError('weak_password' as any, '비밀번호는 8자 이상이어야 해요.');
     const hash = sha256(token);
     return withTransaction(databaseUrl, async (client) => {
       const r = await client.query<{ id: string; user_id: string; expires_at: Date | string; consumed_at: Date | string | null }>(
@@ -1874,9 +1946,9 @@ function createPostgresRepository(databaseUrl: string) {
         [hash],
       );
       const row = r.rows[0];
-      if (!row) throw new RepositoryError('token_not_found', 'Reset token invalid.');
-      if (row.consumed_at) throw new RepositoryError('token_spent', 'Reset token already used.');
-      if (new Date(row.expires_at).getTime() <= Date.now()) throw new RepositoryError('token_expired', 'Reset token expired.');
+      if (!row) throw new RepositoryError('token_not_found', '비밀번호 재설정 토큰이 유효하지 않아요.');
+      if (row.consumed_at) throw new RepositoryError('token_spent', '이미 사용된 비밀번호 재설정 토큰이에요.');
+      if (new Date(row.expires_at).getTime() <= Date.now()) throw new RepositoryError('token_expired', '비밀번호 재설정 토큰이 만료되었어요.');
       const digest = hashPassword(newPassword);
       await client.query('update users set password_hash = $1, password_salt = $2 where id = $3', [digest.hash, digest.salt, row.user_id]);
       await client.query('update password_reset_tokens set consumed_at = now() where id = $1', [row.id]);
@@ -1931,7 +2003,7 @@ function createPostgresRepository(databaseUrl: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to update your profile.');
+      throw new RepositoryError('auth_failed', '프로필을 수정하려면 로그인이 필요해요.');
     }
 
     const nextHandle = handle ? normalizeHandle(handle) : viewer.handle;
@@ -1942,7 +2014,7 @@ function createPostgresRepository(databaseUrl: string) {
     ]);
 
     if (existingHandle.rows[0]) {
-      throw new RepositoryError('handle_taken', 'Handle is already taken.');
+      throw new RepositoryError('handle_taken', '이미 사용 중인 닉네임이에요.');
     }
 
     await queryDatabase(databaseUrl, 'update users set display_name = $1, handle = $2, bio = $3, avatar_url = coalesce($4, avatar_url) where id = $5', [
@@ -1961,7 +2033,7 @@ function createPostgresRepository(databaseUrl: string) {
     const session = await getSession(sessionToken ?? null);
 
     if (!session) {
-      throw new RepositoryError('auth_failed', 'Session is missing or expired.');
+      throw new RepositoryError('auth_failed', '세션이 없거나 만료되었어요. 다시 로그인해 주세요.');
     }
 
     return {
@@ -1971,9 +2043,16 @@ function createPostgresRepository(databaseUrl: string) {
     };
   }
 
-  async function getFeed(mode?: FeedMode, sessionToken?: string | null, opts?: { cursor?: string | null; limit?: number }) {
+  async function getFeed(mode?: FeedMode, sessionToken?: string | null, opts?: { cursor?: string | null; limit?: number }, viewerLat?: number, viewerLng?: number) {
     const user = await getUserFromSession(sessionToken ?? null);
     const actorKey = user ? `user:${user.id}` : `anon:${sessionToken || 'public-preview'}`;
+    const hasViewerCoords = viewerLat !== undefined && viewerLng !== undefined;
+
+    // Nearby 모드: viewer 좌표 없으면 빈 결과
+    if (mode === 'Nearby' && !hasViewerCoords) {
+      return { items: [], nextCursor: null };
+    }
+
     const [blockedAuthorIds, mutedAuthorIds] = await Promise.all([
       getBlockedAuthorIds(user),
       getMutedAuthorIds(user),
@@ -1981,37 +2060,128 @@ function createPostgresRepository(databaseUrl: string) {
     const limit = Math.min(Math.max(opts?.limit ?? 20, 1), 100);
     const cursor = decodeCursor(opts?.cursor ?? null);
 
-    const params: unknown[] = [];
-    let where = '';
-    if (mode && mode !== 'Following') {
-      params.push(mode);
-      where = 'where mode = $' + params.length;
+    // $1 = viewerLng (null if no coords), $2 = viewerLat (null if no coords)
+    const params: unknown[] = [
+      hasViewerCoords ? viewerLng : null,
+      hasViewerCoords ? viewerLat : null,
+      user?.id ?? null,  // $3: viewer user id — 본인 글 unlock 판별용
+    ];
+    const whereClauses: string[] = [];
+
+    if (mode === 'Nearby') {
+      // viewer 반경 5km 안의 글만 노출
+      whereClauses.push(`mp.geog IS NOT NULL AND ST_DWithin(mp.geog, ST_MakePoint($1::double precision, $2::double precision)::geography, 5000)`);
     }
+
     if (cursor) {
       params.push(cursor.createdAt);
-      const p1 = '$' + params.length;
+      const p1 = `$${params.length}`;
       params.push(cursor.id);
-      const p2 = '$' + params.length;
-      const clause = `(created_at, id) < (${p1}::timestamptz, ${p2})`;
-      where = where ? `${where} and ${clause}` : `where ${clause}`;
+      const p2 = `$${params.length}`;
+      whereClauses.push(`(mp.created_at, mp.id) < (${p1}::timestamptz, ${p2})`);
     }
+
     params.push(limit + 1);
-    const sql = `select * from memory_posts ${where} order by created_at desc, id desc limit $${params.length}`;
+    const limitParam = `$${params.length}`;
+    const where = whereClauses.length ? `WHERE ${whereClauses.join(' AND ')}` : '';
+
+    // Nearby 모드는 모자이크 없음; 그 외는 viewer 거리 기반으로 unlock_state 동적 결정
+    // 본인 글($3=viewer id)은 항상 unlock_state 원본 반환 (거리 무관)
+    const unlockStateExpr = mode === 'Nearby'
+      ? `mp.unlock_state`
+      : `CASE
+           WHEN $3::text IS NOT NULL AND mp.user_id = $3::text THEN mp.unlock_state
+           WHEN $1::double precision IS NULL THEN 'locked'
+           WHEN mp.geog IS NULL THEN 'locked'
+           WHEN ST_Distance(mp.geog, ST_MakePoint($1::double precision, $2::double precision)::geography) < mp.unlock_radius_meters THEN mp.unlock_state
+           ELSE 'locked'
+         END`;
+
+    const distanceExpr = `CASE
+      WHEN $1::double precision IS NOT NULL AND mp.geog IS NOT NULL
+      THEN round(ST_Distance(mp.geog, ST_MakePoint($1::double precision, $2::double precision)::geography))::integer
+      ELSE NULL::integer
+    END`;
+
+    const sql = `
+      SELECT
+        mp.id, mp.mode, mp.user_id, mp.author_name, mp.author_handle,
+        mp.place_id, mp.place_name, mp.city,
+        ${distanceExpr} AS distance_meters,
+        mp.unlock_radius_meters,
+        ${unlockStateExpr} AS unlock_state,
+        mp.visibility, mp.created_at, mp.caption, mp.time_label, mp.film_stamp,
+        mp.recall_label, mp.media_colors, mp.media_url, mp.media_urls, mp.accent_color, mp.stats
+      FROM memory_posts mp
+      ${where}
+      ORDER BY mp.created_at DESC, mp.id DESC
+      LIMIT ${limitParam}
+    `;
     const result = await queryDatabase<DbPostRow>(databaseUrl, sql, params);
 
-    const actionResult = await queryDatabase<DbPostActionRow>(databaseUrl, 'select post_id, action from post_actions where actor_key = $1', [actorKey]);
+    const [actionResult, followingResult, followerResult, publicAccountResult] = await Promise.all([
+      queryDatabase<DbPostActionRow>(databaseUrl, 'select post_id, action from post_actions where actor_key = $1', [actorKey]),
+      user
+        ? queryDatabase<{ following_id: string }>(databaseUrl, 'select following_id from follows where follower_id = $1', [user.id])
+        : Promise.resolve({ rows: [] as { following_id: string }[] }),
+      user
+        ? queryDatabase<{ follower_id: string }>(databaseUrl, 'select follower_id from follows where following_id = $1', [user.id])
+        : Promise.resolve({ rows: [] as { follower_id: string }[] }),
+      queryDatabase<{ id: string }>(databaseUrl, 'select id from users where is_public_account = true', []),
+    ]);
+
     const hiddenPostIds = new Set(actionResult.rows.filter((action) => action.action === 'hide').map((action) => action.post_id));
     const viewerActions = actionResult.rows.map((action) => ({
       postId: action.post_id,
       action: action.action,
     }));
 
+    const followingIds = new Set(followingResult.rows.map((r) => r.following_id));
+    const followerIds = new Set(followerResult.rows.map((r) => r.follower_id));
+    const mutualFollowIds = new Set([...followingIds].filter((id) => followerIds.has(id)));
+    const publicAccountAuthorIds = new Set(publicAccountResult.rows.map((r) => r.id));
+
     const rows = result.rows.slice(0, limit);
+
+    const isVisibleToViewer = (post: ReturnType<typeof rowToPost>): boolean => {
+      // 본인 글은 항상 노출
+      if (user && post.authorId === user.id) return true;
+      // 공개 계정 작성자 글 노출
+      if (post.authorId && publicAccountAuthorIds.has(post.authorId)) return true;
+      const v = post.visibility;
+      if (v === 'Public') return true;
+      if (v === 'PublicAfter1h') {
+        const created = post.createdAt ? new Date(post.createdAt).getTime() : NaN;
+        if (Number.isFinite(created) && Date.now() - created >= 60 * 60 * 1000) return true;
+        // 1시간 미만이면 팔로잉만
+        return user ? (post.authorId ? followingIds.has(post.authorId) : false) : false;
+      }
+      if (v === 'Followers') {
+        return user ? (post.authorId ? followingIds.has(post.authorId) : false) : false;
+      }
+      return false;
+    };
+
+    // 우선순위 점수: 맞팔(3) > 팔로잉(2) > 근처 5km(1) > 기타(0)
+    const postScore = (post: ReturnType<typeof rowToPost>): number => {
+      if (!user || !post.authorId) return 0;
+      if (mutualFollowIds.has(post.authorId)) return 3;
+      if (followingIds.has(post.authorId)) return 2;
+      if (hasViewerCoords && post.distanceMeters !== null && (post.distanceMeters ?? Infinity) <= 5000) return 1;
+      return 0;
+    };
+
     const items = rows
       .map(rowToPost)
       .filter((post) => !hiddenPostIds.has(post.id))
       .filter((post) => !post.authorId || !mutedAuthorIds.has(post.authorId))
-      .map((post) => withViewerState(post, viewerActions, blockedAuthorIds));
+      .filter(isVisibleToViewer)
+      .map((post) => withViewerState(post, viewerActions, blockedAuthorIds))
+      .sort((a, b) => {
+        const scoreDiff = postScore(b) - postScore(a);
+        if (scoreDiff !== 0) return scoreDiff;
+        return new Date(b.createdAt ?? 0).getTime() - new Date(a.createdAt ?? 0).getTime();
+      });
 
     let nextCursor: string | null = null;
     if (result.rows.length > limit) {
@@ -2054,7 +2224,7 @@ function createPostgresRepository(databaseUrl: string) {
     const primaryPost = relatedPosts[0];
 
     if (!bubble && !primaryPost && relatedPosts.length === 0) {
-      throw new RepositoryError('place_not_found', `No place matched "${placeKey}".`);
+      throw new RepositoryError('place_not_found', `"${placeKey}" 장소를 찾을 수 없어요.`);
     }
 
     return {
@@ -2108,7 +2278,7 @@ function createPostgresRepository(databaseUrl: string) {
     const row = postResult.rows[0];
 
     if (!row) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     const user = await getUserFromSession(sessionToken ?? null);
@@ -2243,6 +2413,9 @@ function createPostgresRepository(databaseUrl: string) {
 
   async function createMemory({
     checkInTokenId,
+    lat,
+    lng,
+    placeName: inputPlaceName,
     caption,
     visibility,
     mediaUrl,
@@ -2250,7 +2423,10 @@ function createPostgresRepository(databaseUrl: string) {
     mediaKeys,
     sessionToken,
   }: {
-    checkInTokenId: string;
+    checkInTokenId?: string;
+    lat?: number;
+    lng?: number;
+    placeName?: string;
     caption: string;
     visibility: Visibility;
     mediaUrl?: string;
@@ -2259,20 +2435,69 @@ function createPostgresRepository(databaseUrl: string) {
     sessionToken?: string | null;
   }) {
     const user = await getUserFromSession(sessionToken ?? null);
+
+    // 신규 GPS 기반 플로우: checkInTokenId 없이 lat/lng로 장소 자동 생성
+    if (lat !== undefined && lng !== undefined) {
+      const place = await createOrFindPlace({ userId: user?.id ?? null, lat, lng, name: inputPlaceName });
+      const now = new Date();
+      const memory: MemoryPost = {
+        id: `memory-${randomUUID()}`,
+        mode: 'Memories',
+        authorId: user?.id,
+        authorName: user?.displayName ?? 'You',
+        authorHandle: user ? `@${user.handle}` : '@you',
+        placeId: place.id,
+        placeName: place.name,
+        city: 'Seoul',
+        distanceMeters: 0,
+        unlockRadiusMeters: 200,
+        unlockState: 'open',
+        visibility,
+        createdAt: now.toISOString(),
+        caption,
+        timeLabel: 'just now',
+        filmStamp: `${formatFilmStamp(now)} / GPS`,
+        recallLabel: 'Saved at this place',
+        mediaUrl,
+        mediaUrls: mediaUrls?.length ? mediaUrls : mediaUrl ? [mediaUrl] : [],
+        mediaColors: ['#07151A', '#2B5B61', '#C7F95B'],
+        accentColor: colors.lime,
+        stats: { echoes: 0, replies: 0, saves: 0 },
+      };
+      const inserted = await queryDatabase<DbPostRow>(databaseUrl, `
+        insert into memory_posts (
+          id, mode, user_id, author_name, author_handle, place_id, place_name, city,
+          distance_meters, unlock_radius_meters, unlock_state, visibility, caption,
+          time_label, film_stamp, recall_label, media_colors, media_url, media_urls, accent_color, stats
+        )
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17::jsonb, $18, $19::jsonb, $20, $21::jsonb)
+        returning *
+      `, [
+        memory.id, memory.mode, memory.authorId ?? null, memory.authorName, memory.authorHandle,
+        memory.placeId ?? null, memory.placeName, memory.city, memory.distanceMeters,
+        memory.unlockRadiusMeters, memory.unlockState, memory.visibility, memory.caption,
+        memory.timeLabel, memory.filmStamp, memory.recallLabel ?? null,
+        JSON.stringify(memory.mediaColors), memory.mediaUrl ?? null,
+        JSON.stringify(memory.mediaUrls ?? []), memory.accentColor, JSON.stringify(memory.stats),
+      ]);
+      return { memory: rowToPost(inserted.rows[0]) };
+    }
+
+    // 구형 체크인 토큰 기반 플로우
     return withTransaction(databaseUrl, async (client) => {
       const tokenResult = await client.query<DbTokenRow>('select * from check_in_tokens where id = $1 for update', [checkInTokenId]);
       const token = tokenResult.rows[0];
 
       if (!token) {
-        throw new RepositoryError('token_not_found', 'Check-in token was not found.');
+        throw new RepositoryError('token_not_found', '현장 인증 토큰을 찾을 수 없어요.');
       }
 
       if (new Date(token.expires_at).getTime() <= Date.now()) {
-        throw new RepositoryError('token_expired', 'Check-in token has expired.');
+        throw new RepositoryError('token_expired', '현장 인증이 만료되었어요. 다시 인증해 주세요.');
       }
 
       if (token.uploads_remaining <= 0) {
-        throw new RepositoryError('token_spent', 'Check-in token has no uploads remaining.');
+        throw new RepositoryError('token_spent', '현장 인증 게시 가능 횟수가 없어요.');
       }
 
       const now = new Date();
@@ -2367,18 +2592,18 @@ function createPostgresRepository(databaseUrl: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to edit posts.');
+      throw new RepositoryError('auth_failed', '게시물을 수정하려면 로그인이 필요해요.');
     }
 
     const existing = await queryDatabase<DbPostRow>(databaseUrl, 'select * from memory_posts where id = $1', [postId]);
     const post = existing.rows[0];
 
     if (!post) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     if (post.user_id !== viewer.id) {
-      throw new RepositoryError('post_owner_required', 'You can only edit your own posts.');
+      throw new RepositoryError('post_owner_required', '내 게시물만 수정할 수 있어요.');
     }
 
     const updated = await queryDatabase<DbPostRow>(databaseUrl, `
@@ -2400,18 +2625,18 @@ function createPostgresRepository(databaseUrl: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to delete posts.');
+      throw new RepositoryError('auth_failed', '게시물을 삭제하려면 로그인이 필요해요.');
     }
 
     const existing = await queryDatabase<DbPostRow>(databaseUrl, 'select * from memory_posts where id = $1', [postId]);
     const post = existing.rows[0];
 
     if (!post) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     if (post.user_id !== viewer.id) {
-      throw new RepositoryError('post_owner_required', 'You can only delete your own posts.');
+      throw new RepositoryError('post_owner_required', '내 게시물만 삭제할 수 있어요.');
     }
 
     await queryDatabase(databaseUrl, 'delete from memory_posts where id = $1', [postId]);
@@ -2447,7 +2672,7 @@ function createPostgresRepository(databaseUrl: string) {
     if (profileUser) {
       const blockState = await getBlockState(viewer, profileUser.id);
       const hideProfilePosts = blockState.isBlocked || blockState.blocksViewer;
-      const [postsResult, followerResult, followingResult, followResult] = await Promise.all([
+      const [postsResult, followerResult, followingResult, followResult, publicAccountResult] = await Promise.all([
         queryDatabase<DbPostRow>(databaseUrl, 'select * from memory_posts where user_id = $1 or lower(replace(author_handle, $2, $3)) = $4 order by created_at desc', [
           profileUser.id,
           '@',
@@ -2462,8 +2687,26 @@ function createPostgresRepository(databaseUrl: string) {
               profileUser.id,
             ])
           : Promise.resolve({ rows: [{ following: false }] }),
+        queryDatabase<{ is_public: boolean }>(databaseUrl, 'select is_public_account as is_public from users where id = $1', [profileUser.id]),
       ]);
-      const posts = postsResult.rows.map(rowToPost);
+      const allPosts = postsResult.rows.map(rowToPost);
+
+      // visibility 필터: getFeed와 동일한 정책 적용
+      const isFollowingProfile = Boolean(followResult.rows[0]?.following);
+      const profileIsPublicAccount = Boolean(publicAccountResult.rows[0]?.is_public);
+      const posts = allPosts.filter((post) => {
+        if (viewer && post.authorId === viewer.id) return true;   // 본인 글 항상 노출
+        if (profileIsPublicAccount) return true;                   // 공개 계정 글 노출
+        const v = post.visibility;
+        if (v === 'Public') return true;
+        if (v === 'PublicAfter1h') {
+          const created = post.createdAt ? new Date(post.createdAt).getTime() : Number.NaN;
+          if (Number.isFinite(created) && Date.now() - created >= 60 * 60 * 1000) return true;
+          return isFollowingProfile;
+        }
+        if (v === 'Followers') return isFollowingProfile;
+        return false;
+      });
       const savedPosts = viewer?.id === profileUser.id
         ? (await queryDatabase<DbPostRow>(databaseUrl, `
             select p.*
@@ -2498,7 +2741,7 @@ function createPostgresRepository(databaseUrl: string) {
     const firstPost = seedPosts[0];
 
     if (!firstPost) {
-      throw new RepositoryError('profile_not_found', 'Profile was not found.');
+      throw new RepositoryError('profile_not_found', '프로필을 찾을 수 없어요.');
     }
 
     return buildProfile({
@@ -2524,7 +2767,7 @@ function createPostgresRepository(databaseUrl: string) {
     const profileUser = await findProfileUser(handleOrId);
 
     if (!profileUser) {
-      throw new RepositoryError('profile_not_found', 'Profile was not found.');
+      throw new RepositoryError('profile_not_found', '프로필을 찾을 수 없어요.');
     }
 
     const blockState = await getBlockState(viewer, profileUser.id);
@@ -2570,17 +2813,17 @@ function createPostgresRepository(databaseUrl: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to follow people.');
+      throw new RepositoryError('auth_failed', '팔로우하려면 로그인이 필요해요.');
     }
 
     const targetUser = await findProfileUser(handleOrId);
 
     if (!targetUser) {
-      throw new RepositoryError('profile_not_found', 'Profile was not found.');
+      throw new RepositoryError('profile_not_found', '프로필을 찾을 수 없어요.');
     }
 
     if (targetUser.id === viewer.id) {
-      throw new RepositoryError('follow_self', 'You cannot follow yourself.');
+      throw new RepositoryError('follow_self', '자기 자신을 팔로우할 수 없어요.');
     }
 
     const existing = await queryDatabase<{ follower_id: string }>(databaseUrl, 'select follower_id from follows where follower_id = $1 and following_id = $2', [
@@ -2606,17 +2849,17 @@ function createPostgresRepository(databaseUrl: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to block people.');
+      throw new RepositoryError('auth_failed', '차단하려면 로그인이 필요해요.');
     }
 
     const targetUser = await findProfileUser(handleOrId);
 
     if (!targetUser) {
-      throw new RepositoryError('profile_not_found', 'Profile was not found.');
+      throw new RepositoryError('profile_not_found', '프로필을 찾을 수 없어요.');
     }
 
     if (targetUser.id === viewer.id) {
-      throw new RepositoryError('block_self', 'You cannot block yourself.');
+      throw new RepositoryError('block_self', '자기 자신을 차단할 수 없어요.');
     }
 
     const existing = await queryDatabase<{ blocker_id: string }>(databaseUrl, 'select blocker_id from user_blocks where blocker_id = $1 and blocked_id = $2', [
@@ -2647,7 +2890,7 @@ function createPostgresRepository(databaseUrl: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to view safety settings.');
+      throw new RepositoryError('auth_failed', '안전 설정을 보려면 로그인이 필요해요.');
     }
 
     const actorKey = getActorKey(viewer, sessionToken);
@@ -2753,7 +2996,7 @@ function createPostgresRepository(databaseUrl: string) {
     const row = postResult.rows[0];
 
     if (!row) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     const viewer = await getUserFromSession(sessionToken ?? null);
@@ -2797,14 +3040,14 @@ function createPostgresRepository(databaseUrl: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to delete replies.');
+      throw new RepositoryError('auth_failed', '댓글을 삭제하려면 로그인이 필요해요.');
     }
 
     const postResult = await queryDatabase<DbPostRow>(databaseUrl, 'select * from memory_posts where id = $1', [postId]);
     const post = postResult.rows[0];
 
     if (!post) {
-      throw new RepositoryError('post_not_found', 'Post was not found.');
+      throw new RepositoryError('post_not_found', '게시물을 찾을 수 없어요.');
     }
 
     const commentResult = await queryDatabase<DbPostActionRow>(databaseUrl, 'select * from post_actions where id = $1 and post_id = $2 and action = $3', [
@@ -2815,11 +3058,11 @@ function createPostgresRepository(databaseUrl: string) {
     const comment = commentResult.rows[0];
 
     if (!comment) {
-      throw new RepositoryError('comment_not_found', 'Reply was not found.');
+      throw new RepositoryError('comment_not_found', '댓글을 찾을 수 없어요.');
     }
 
     if (comment.user_id !== viewer.id && post.user_id !== viewer.id) {
-      throw new RepositoryError('auth_failed', 'You can only delete your own replies.');
+      throw new RepositoryError('auth_failed', '내 댓글만 삭제할 수 있어요.');
     }
 
     const stats = {
@@ -2912,7 +3155,7 @@ function createPostgresRepository(databaseUrl: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
 
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to update notifications.');
+      throw new RepositoryError('auth_failed', '알림 설정을 변경하려면 로그인이 필요해요.');
     }
 
     const visibleNotifications = await getNotifications(sessionToken);
@@ -2935,7 +3178,7 @@ function createPostgresRepository(databaseUrl: string) {
   async function registerPushToken(sessionToken: string | null, token: string, platform: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to register a push token.');
+      throw new RepositoryError('auth_failed', '푸시 토큰을 등록하려면 로그인이 필요해요.');
     }
     const now = new Date().toISOString();
     // upsert: 이미 같은 (user_id, token) 조합이 있으면 last_seen_at 갱신 및 revoked_at 초기화
@@ -2957,7 +3200,7 @@ function createPostgresRepository(databaseUrl: string) {
   async function revokePushToken(sessionToken: string | null, token: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to revoke a push token.');
+      throw new RepositoryError('auth_failed', '푸시 토큰을 해제하려면 로그인이 필요해요.');
     }
     await queryDatabase(databaseUrl, `
       update push_tokens set revoked_at = now()
@@ -2971,7 +3214,7 @@ function createPostgresRepository(databaseUrl: string) {
   async function listRecallFeed(sessionToken: string | null): Promise<RecallFeedItem[]> {
     const viewer = await getUserFromSession(sessionToken ?? null);
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to view recall feed.');
+      throw new RepositoryError('auth_failed', '회상 피드를 보려면 로그인이 필요해요.');
     }
     const result = await queryDatabase<DbRecallFeedRow>(databaseUrl, `
       select r.id, r.kind, r.source_post_id, r.place_id, r.scheduled_for, r.delivered_at, r.created_at,
@@ -2991,7 +3234,7 @@ function createPostgresRepository(databaseUrl: string) {
   async function dismissRecall(sessionToken: string | null, id: string) {
     const viewer = await getUserFromSession(sessionToken ?? null);
     if (!viewer) {
-      throw new RepositoryError('auth_failed', 'Sign in to dismiss recall.');
+      throw new RepositoryError('auth_failed', '회상을 닫으려면 로그인이 필요해요.');
     }
     await queryDatabase(databaseUrl, `
       update recall_events set delivered_at = now()
@@ -3078,6 +3321,33 @@ function createPostgresRepository(databaseUrl: string) {
     };
   }
 
+  // 사용자 GPS 위치로 장소 생성 또는 기존 장소 반환 (50m 이내 중복 방지)
+  async function createOrFindPlace({ userId, lat, lng, name }: { userId: string | null; lat: number; lng: number; name?: string }): Promise<PlaceBubble> {
+    // 같은 사용자의 반경 50m 이내 장소 중복 체크
+    if (userId) {
+      const dupResult = await queryDatabase<DbPlaceRow>(
+        databaseUrl,
+        `select * from places
+         where created_by_user_id = $1
+           and geog is not null
+           and ST_DWithin(geog, ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography, 50)
+         limit 1`,
+        [userId, lng, lat],
+      );
+      if (dupResult.rows[0]) return rowToPlace(dupResult.rows[0]);
+    }
+    const resolvedName = name?.trim() || await reverseGeocode(lat, lng);
+    const placeId = `place-${randomUUID()}`;
+    const result = await queryDatabase<DbPlaceRow>(
+      databaseUrl,
+      `insert into places (id, name, city, subtitle, lat, lng, map_x, map_y, intensity, unlocked, unlock_radius_meters, upload_radius_meters, created_by_user_id)
+       values ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)
+       returning *`,
+      [placeId, resolvedName, 'Seoul', '', lat, lng, 0, 0, 0, true, 200, 200, userId],
+    );
+    return rowToPlace(result.rows[0]);
+  }
+
   // PostGIS-backed nearby search. Uses ST_DWithin (uses GIST index) for filtering
   // and KNN (`<->`) for distance ordering. radiusMeters defaults to 5km.
   async function findNearbyPlaces({ latitude, longitude, radiusMeters = 5000, limit = 20 }: { latitude: number; longitude: number; radiusMeters?: number; limit?: number; }) {
@@ -3130,6 +3400,7 @@ function createPostgresRepository(databaseUrl: string) {
     getTimeline,
     issueCheckIn,
     createMemory,
+    createOrFindPlace,
     findNearbyPlaces,
     registerPushToken,
     revokePushToken,
@@ -3137,6 +3408,38 @@ function createPostgresRepository(databaseUrl: string) {
     dismissRecall,
     loginOrRegisterAppleUser,
   };
+}
+
+// ─── Nominatim 역지오코딩 (1초당 1회 rate limit) ─────────────────────────────
+
+let nominatimLastCallAt = 0;
+const NOMINATIM_MIN_INTERVAL_MS = 1000;
+
+export async function reverseGeocode(lat: number, lng: number): Promise<string> {
+  const now = Date.now();
+  const elapsed = now - nominatimLastCallAt;
+  if (elapsed < NOMINATIM_MIN_INTERVAL_MS) {
+    await new Promise((resolve) => setTimeout(resolve, NOMINATIM_MIN_INTERVAL_MS - elapsed));
+  }
+  nominatimLastCallAt = Date.now();
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}&accept-language=ko`;
+    const res = await fetch(url, {
+      headers: { 'User-Agent': 'happened-app/1.0 (admin@happened.app)' },
+      signal: AbortSignal.timeout(6000),
+    });
+    if (!res.ok) throw new Error(`Nominatim ${res.status}`);
+    const data = await res.json() as { address?: Record<string, string>; display_name?: string };
+    const addr = data.address;
+    if (addr) {
+      const parts = [addr['suburb'], addr['road']].filter(Boolean);
+      if (parts.length) return parts.join(' ');
+    }
+    if (data.display_name) return data.display_name.split(',')[0].trim();
+    throw new Error('no usable name');
+  } catch {
+    return `내 장소 (${lat.toFixed(3)}, ${lng.toFixed(3)})`;
+  }
 }
 
 export async function createRepository(databaseUrl?: string | null) {

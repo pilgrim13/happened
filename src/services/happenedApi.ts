@@ -30,7 +30,7 @@ type ApiEnvelope<T> = {
 
 type CreateMemoryResponse = {
   memory: MemoryPost;
-  checkInToken: CheckInToken;
+  checkInToken?: CheckInToken;
 };
 
 type PlaceDetailResponse = {
@@ -160,11 +160,17 @@ async function requestApi<T>(path: string, init?: RequestInit, sessionToken?: st
   return body as T;
 }
 
-export async function fetchFeed(mode?: FeedMode, sessionToken?: string | null) {
-  const query = mode ? `?mode=${encodeURIComponent(mode)}` : '';
-  const response = await requestApi<ApiEnvelope<MemoryPost[]>>(`/v1/feed${query}`, undefined, sessionToken);
+export async function fetchFeed(mode?: FeedMode, sessionToken?: string | null, viewerCoords?: { lat: number; lng: number }) {
+  const params = new URLSearchParams();
+  if (mode) params.set('mode', mode);
+  if (viewerCoords) {
+    params.set('lat', String(viewerCoords.lat));
+    params.set('lng', String(viewerCoords.lng));
+  }
+  const query = params.toString() ? `?${params.toString()}` : '';
+  const response = await requestApi<ApiEnvelope<{ items: MemoryPost[]; nextCursor: string | null }>>(`/v1/feed${query}`, undefined, sessionToken);
 
-  return response.data.map(absolutizeMediaUrl);
+  return (response.data?.items ?? []).map(absolutizeMediaUrl);
 }
 
 export async function fetchSearchResults(query: string, sessionToken?: string | null) {
@@ -437,27 +443,46 @@ export async function loginWithApple(identityToken: string, fullName?: { givenNa
   };
 }
 
+export async function fetchReverseGeocode(lat: number, lng: number): Promise<string> {
+  const response = await requestApi<ApiEnvelope<string>>(`/v1/places/reverse-geocode?lat=${lat}&lng=${lng}`);
+  return response.data;
+}
+
+export async function createPlace(
+  input: { lat: number; lng: number; name?: string },
+  sessionToken?: string | null,
+) {
+  const response = await requestApi<ApiEnvelope<PlaceBubble>>('/v1/places', {
+    method: 'POST',
+    body: JSON.stringify(input),
+  }, sessionToken);
+  return response.data;
+}
+
 export async function createMemory(
-  checkInTokenId: string,
-  caption: string,
-  visibility: Visibility,
-  input?: { mediaDataUrl?: string; mediaFileName?: string; mediaItems?: Array<{ mediaDataUrl: string; mediaFileName?: string }> },
+  input: {
+    lat: number;
+    lng: number;
+    placeName?: string;
+    caption: string;
+    visibility: Visibility;
+    mediaItems?: Array<{ mediaDataUrl: string; mediaFileName?: string }>;
+  },
   sessionToken?: string | null,
 ) {
   const response = await requestApi<ApiEnvelope<CreateMemoryResponse>>('/v1/memories', {
     method: 'POST',
     body: JSON.stringify({
-      checkInTokenId,
-      caption,
-      visibility,
-      mediaDataUrl: input?.mediaDataUrl,
-      mediaFileName: input?.mediaFileName,
-      mediaItems: input?.mediaItems,
+      lat: input.lat,
+      lng: input.lng,
+      placeName: input.placeName,
+      caption: input.caption,
+      visibility: input.visibility,
+      mediaItems: input.mediaItems,
     }),
   }, sessionToken);
 
   return {
-    ...response.data,
     memory: absolutizeMediaUrl(response.data.memory),
   };
 }
