@@ -12,6 +12,7 @@ import { useAppData } from '../contexts/AppDataContext';
 import { useSession } from '../contexts/SessionContext';
 import { useNotice } from '../contexts/NoticeContext';
 import { useCapture } from '../contexts/CaptureContext';
+
 import { useSharePost } from '../hooks/useSharePost';
 import { useEffect, useState } from 'react';
 import { fetchRecallFeed } from '../services/happenedApi';
@@ -23,12 +24,16 @@ export function HomeRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Home'
   const navigation = useNavigation<RootNav>();
   const {
     feedPosts,
+    nearbyPosts,
     notifications,
     performPostAction,
+    editPost,
+    deletePost,
     blockAuthor,
     acknowledgeNotifications,
     search,
     refresh,
+    refreshNearby,
   } = useAppData();
   const { session } = useSession();
   const { showNotice } = useNotice();
@@ -48,6 +53,8 @@ export function HomeRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Home'
     <HomeScreen
       initialIndex={initialIndex}
       posts={feedPosts}
+      nearbyPosts={nearbyPosts}
+      currentUserId={session?.user.id}
       onOpenPlace={(placeName) => navigation.navigate('PlaceDetail', { placeName })}
       onCaptureAtPlace={(placeName) => {
         captureAtPlace(placeName);
@@ -59,8 +66,15 @@ export function HomeRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Home'
         navigation.navigate('MainTabs', { screen: 'Capture' });
       }}
       onRefresh={refresh}
+      onNearbyRequest={refreshNearby}
       onPostAction={async (postId, action, input) => {
         await performPostAction(postId, action, input);
+      }}
+      onEditPost={async (postId, input) => {
+        await editPost(postId, input);
+      }}
+      onDeletePost={async (postId) => {
+        await deletePost(postId);
       }}
       onSharePost={sharePost}
       onBlockAuthor={async (handle) => {
@@ -96,36 +110,24 @@ export function MapRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Map'>)
 
 export function CaptureRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Capture'>) {
   const navigation = useNavigation<RootNav>();
-  const { checkInToken } = useAppData();
   const { showNotice } = useNotice();
-  const {
-    capturePlace,
-    displayPlaceName,
-    locationLabel,
-    distanceLabel,
-    blockedMessage,
-    issueCheckInToken,
-    upload,
-  } = useCapture();
+  const { upload } = useCapture();
   return (
     <CaptureScreen
-      placeName={capturePlace}
-      displayPlaceName={displayPlaceName}
-      token={checkInToken}
-      locationLabel={locationLabel}
-      distanceLabel={distanceLabel}
-      verificationBlockedMessage={blockedMessage}
-      onIssueToken={issueCheckInToken}
       onUpload={async (input) => {
-        const result = await upload(input);
-        if (result) {
-          navigation.dispatch(
-            CommonActions.navigate({ name: 'MainTabs', params: { screen: 'Home' } }),
-          );
+        try {
+          const result = await upload(input);
+          if (result) {
+            navigation.dispatch(
+              CommonActions.navigate({ name: 'MainTabs', params: { screen: 'Home' } }),
+            );
+          }
+        } catch (err) {
+          if (err instanceof Error && err.message.toLowerCase().includes('permission')) {
+            navigation.navigate('Permissions');
+          }
         }
       }}
-      onOpenPlace={(placeName) => navigation.navigate('PlaceDetail', { placeName })}
-      onOpenMap={() => navigation.navigate('MainTabs', { screen: 'Map' })}
       onNotice={showNotice}
     />
   );

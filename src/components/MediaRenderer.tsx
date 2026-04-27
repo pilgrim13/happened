@@ -1,13 +1,13 @@
 import { createElement } from 'react';
 import { Image, Platform, StyleSheet, Text, View } from 'react-native';
-import type { ImageStyle, StyleProp, ViewStyle } from 'react-native';
+import type { StyleProp, ViewStyle, ViewProps } from 'react-native';
 
 import { colors, fonts } from '../theme/tokens';
 
 type Props = {
   uri?: string;
   resizeMode?: 'cover' | 'contain';
-  style?: StyleProp<ImageStyle>;
+  style?: StyleProp<ViewStyle>;
 };
 
 export function isVideoUrl(uri?: string) {
@@ -20,7 +20,15 @@ export function MediaRenderer({ uri, resizeMode = 'cover', style }: Props) {
   }
 
   if (!isVideoUrl(uri)) {
-    return <Image source={{ uri }} resizeMode={resizeMode} style={style} />;
+    // web에서 touchAction: 'pan-y' 으로 수직 스크롤 통과 (이미지가 터치 스크롤 가로채는 문제 방지)
+    const webScrollStyle: ViewProps['style'] = Platform.OS === 'web'
+      ? { touchAction: 'pan-y' } as any
+      : undefined;
+    return (
+      <View style={[style, webScrollStyle]} pointerEvents="none">
+        <Image source={{ uri }} resizeMode={resizeMode} style={StyleSheet.absoluteFillObject} />
+      </View>
+    );
   }
 
   if (Platform.OS === 'web') {

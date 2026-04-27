@@ -1,11 +1,12 @@
 import { LinearGradient } from 'expo-linear-gradient';
-import { ArrowLeft, Bookmark, ChevronLeft, ChevronRight, Heart, Lock, MapPin, MessageCircle, Send, Trash2 } from 'lucide-react-native';
+import { ArrowLeft, Bookmark, ChevronLeft, ChevronRight, Clock, Globe, Heart, Lock, MapPin, MessageCircle, Send, Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MediaRenderer } from '../components/MediaRenderer';
 import { localizePlaceName, localizeTimeLabel, useI18n } from '../i18n';
+import { useVisualViewport } from '../hooks/useVisualViewport';
 import { deletePostComment, fetchPostDetail } from '../services/happenedApi';
 import { colors, fonts, radius } from '../theme/tokens';
 import type { MemoryPost, MemoryPostAction, PostDetail } from '../types/happened';
@@ -28,6 +29,7 @@ function handleLabel(value: string) {
 export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, onOpenPlace, onOpenProfile, onPostAction, onNotice }: Props) {
   const insets = useSafeAreaInsets();
   const { language, t } = useI18n();
+  const keyboardHeight = useVisualViewport();
   const [detail, setDetail] = useState<PostDetail | null>(initialPost ? { post: initialPost, comments: [] } : null);
   const [replyText, setReplyText] = useState('');
   const [loading, setLoading] = useState(true);
@@ -106,7 +108,7 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom + 34, 70) }]} showsVerticalScrollIndicator={false}>
+      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom + 34, 70) + keyboardHeight }]} showsVerticalScrollIndicator={false}>
         <View style={styles.frame}>
           <View style={styles.header}>
             <Pressable style={styles.backButton} onPress={onBack}>
@@ -131,7 +133,25 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
                   </Pressable>
                   <Pressable style={styles.authorCopy} onPress={() => onOpenProfile?.(post.authorHandle)}>
                     <Text style={styles.authorName}>{post.authorName}</Text>
-                    <Text style={styles.authorHandle}>{handleLabel(post.authorHandle)} · {localizeTimeLabel(post.timeLabel, language)}</Text>
+                    <View style={styles.authorMeta}>
+                      <Text style={styles.authorHandle}>{handleLabel(post.authorHandle)} · {localizeTimeLabel(post.timeLabel, language)}</Text>
+                      {post.visibility === 'Public' ? (
+                        <View style={styles.visBadge}>
+                          <Globe color={colors.setlogMuted} size={10} strokeWidth={2.4} />
+                          <Text style={styles.visBadgeText}>{t('visibility.Public.short')}</Text>
+                        </View>
+                      ) : post.visibility === 'PublicAfter1h' ? (
+                        <View style={styles.visBadge}>
+                          <Clock color={colors.setlogMuted} size={10} strokeWidth={2.4} />
+                          <Text style={styles.visBadgeText}>{t('visibility.PublicAfter1h.short')}</Text>
+                        </View>
+                      ) : post.visibility === 'Followers' ? (
+                        <View style={styles.visBadge}>
+                          <Lock color={colors.setlogMuted} size={10} strokeWidth={2.4} />
+                          <Text style={styles.visBadgeText}>{t('visibility.Followers.short')}</Text>
+                        </View>
+                      ) : null}
+                    </View>
                   </Pressable>
                 </View>
 
@@ -338,12 +358,28 @@ const styles = StyleSheet.create({
     fontSize: 15,
     fontWeight: '900',
   },
+  authorMeta: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+    marginTop: 2,
+  },
   authorHandle: {
     color: colors.setlogMuted,
     fontFamily: fonts.body,
     fontSize: 12,
     fontWeight: '800',
-    marginTop: 2,
+  },
+  visBadge: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 3,
+  },
+  visBadgeText: {
+    color: colors.setlogMuted,
+    fontFamily: fonts.body,
+    fontSize: 10,
+    fontWeight: '700',
   },
   placeRow: {
     minHeight: 38,
@@ -487,7 +523,7 @@ const styles = StyleSheet.create({
     minHeight: 44,
     color: colors.setlogInk,
     fontFamily: fonts.body,
-    fontSize: 14,
+    fontSize: 16,
     fontWeight: '800',
     paddingVertical: 10,
   },
