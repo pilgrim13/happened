@@ -1,0 +1,135 @@
+import { StyleSheet } from 'react-native';
+import { colors, fonts, radius } from '../theme/tokens';
+
+export const styles = StyleSheet.create({
+  screen: {
+    flex: 1,
+    alignItems: 'center',
+    backgroundColor: colors.setlogBg,
+  },
+  list: {
+    width: '100%',
+    maxWidth: 560,
+  },
+  loadMoreSpinner: {
+    paddingVertical: 16,
+  },
+  listContent: {
+    paddingHorizontal: 14,
+  },
+  header: {
+    paddingBottom: 14,
+  },
+  topRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  brand: {
+    color: colors.setlogInk,
+    fontFamily: fonts.display,
+    fontSize: 30,
+    fontWeight: '900',
+  },
+  tagline: {
+    color: colors.setlogMuted,
+    fontFamily: fonts.body,
+    fontSize: 12,
+    fontWeight: '700',
+    marginTop: 1,
+  },
+  headerActions: {
+    flexDirection: 'row',
+    gap: 8,
+  },
+  headerButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.setlogPaper,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+  },
+  unreadBadge: {
+    position: 'absolute',
+    top: -3,
+    right: -3,
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 4,
+    backgroundColor: colors.coral,
+    borderColor: colors.setlogPaper,
+    borderWidth: 1,
+  },
+  unreadBadgeText: {
+    color: colors.setlogPaper,
+    fontFamily: fonts.body,
+    fontSize: 9,
+    fontWeight: '900',
+  },
+  headerButtonActive: {
+    borderColor: colors.setlogPink,
+    backgroundColor: '#FFF0F4',
+  },
+  postButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.setlogYellow,
+  },
+  searchBox: {
+    minHeight: 46,
+    borderRadius: 18,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+    backgroundColor: colors.setlogPaper,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 9,
+    paddingHorizontal: 12,
+    marginTop: 14,
+  },
+  searchInput: {
+    flex: 1,
+    color: colors.setlogInk,
+    fontFamily: fonts.body,
+    fontSize: 16,
+    fontWeight: '800',
+    paddingVertical: 10,
+  },
+  modeRow: {
+    flexDirection: 'row',
+    gap: 8,
+    marginTop: 18,
+  },
+  modePill: {
+    minHeight: 38,
+    borderRadius: radius.pill,
+    paddingHorizontal: 15,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: colors.setlogPaper,
+    borderColor: colors.setlogLine,
+    borderWidth: 1,
+  },
+  modePillActive: {
+    backgroundColor: colors.setlogInk,
+    borderColor: colors.setlogInk,
+  },
+  modeText: {
+    color: colors.setlogMuted,
+    fontFamily: fonts.body,
+    fontSize: 13,
+    fontWeight: '800',
+  },
+  modeTextActive: {
+    color: colors.setlogPaper,
+  },
+});
