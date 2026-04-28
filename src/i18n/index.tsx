@@ -271,6 +271,7 @@ const translations = {
     'post.deleted': 'Reply deleted',
     'post.noReplies': 'No replies yet',
     'post.noRepliesText': 'Start the conversation from this place memory.',
+    'post.unlockedByComment': 'Photo unlocked by your comment 🎉',
 
     'user.loading': 'Loading profile',
     'user.failed': 'Profile failed to load',
@@ -564,6 +565,7 @@ const translations = {
     'post.deleted': '댓글을 삭제했습니다',
     'post.noReplies': '아직 댓글이 없습니다',
     'post.noRepliesText': '이 장소 기억에 첫 댓글을 남겨보세요.',
+    'post.unlockedByComment': '댓글로 사진이 공개됐어요 🎉',
 
     'user.loading': '프로필 불러오는 중',
     'user.failed': '프로필을 불러오지 못했습니다',

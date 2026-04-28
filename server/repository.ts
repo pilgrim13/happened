@@ -3030,9 +3030,14 @@ function createPostgresRepository(databaseUrl: string) {
 
     const protectedPost = withViewerState(post, viewerActions);
 
+    // locked 포스트라도 본인이 단 댓글은 항상 표시 (viewer.id === comment.user_id)
+    const visibleComments = protectedPost.unlockState === 'locked'
+      ? (viewer ? comments.filter((_, i) => commentsResult.rows[i]?.user_id === viewer.id) : [])
+      : comments;
+
     return {
       post: protectedPost,
-      comments: protectedPost.unlockState === 'locked' ? [] : comments,
+      comments: visibleComments,
     };
   }
 

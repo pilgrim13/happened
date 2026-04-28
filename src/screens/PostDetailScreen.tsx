@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { ArrowLeft, Bookmark, ChevronLeft, ChevronRight, Clock, Globe, Heart, Lock, MapPin, MessageCircle, Send, Trash2 } from 'lucide-react-native';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type TextInput as TextInputType } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MediaRenderer } from '../components/MediaRenderer';
@@ -37,6 +37,13 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
   const [mediaIndex, setMediaIndex] = useState(0);
   const [mediaWidth, setMediaWidth] = useState(0);
   const mediaScrollRef = useRef<ScrollView>(null);
+  const outerScrollRef = useRef<ScrollView>(null);
+  const commentsAnchorY = useRef(0);
+  const inputRef = useRef<TextInputType>(null);
+  const prevUnlockStateRef = useRef<string | undefined>(undefined);
+  const scrollToComments = useCallback(() => {
+    outerScrollRef.current?.scrollTo({ y: Math.max(0, commentsAnchorY.current - 12), animated: true });
+  }, []);
 
   const loadDetail = useCallback(async () => {
     setLoading(true);
@@ -52,6 +59,18 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
   useEffect(() => {
     loadDetail().catch(() => undefined);
   }, [loadDetail]);
+
+  // locked → 비잠금 전환 시 1회성 toast
+  useEffect(() => {
+    const currentState = detail?.post?.unlockState;
+    if (prevUnlockStateRef.current === 'locked' && currentState && currentState !== 'locked') {
+      onNotice?.(t('post.unlockedByComment'));
+    }
+    if (currentState !== undefined) {
+      prevUnlockStateRef.current = currentState;
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [detail?.post?.unlockState]);
 
   const runAction = async (action: MemoryPostAction, input?: { body?: string }) => {
     setSubmitting(true);
@@ -75,6 +94,7 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
 
     await runAction('reply', { body });
     setReplyText('');
+    inputRef.current?.blur();
   };
 
   const deleteComment = async (commentId: string) => {
@@ -108,7 +128,12 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
 
   return (
     <View style={styles.screen}>
-      <ScrollView contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom + 34, 70) + keyboardHeight }]} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        ref={outerScrollRef}
+        contentContainerStyle={[styles.content, { paddingTop: insets.top + 12, paddingBottom: Math.max(insets.bottom + 34, 70) + keyboardHeight }]}
+        showsVerticalScrollIndicator={false}
+        style={Platform.OS === 'web' ? ({ overflowY: 'auto', WebkitOverflowScrolling: 'touch' } as any) : undefined}
+      >
         <View style={styles.frame}>
           <View style={styles.header}>
             <Pressable style={styles.backButton} onPress={onBack}>
@@ -169,7 +194,7 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
                       pagingEnabled
                       scrollEnabled={mediaUrls.length > 1}
                       showsHorizontalScrollIndicator={false}
-                      style={StyleSheet.absoluteFill}
+                      style={[StyleSheet.absoluteFill, Platform.OS === 'web' ? ({ touchAction: mediaUrls.length > 1 ? 'pan-x' : 'pan-y' } as any) : null]}
                       onMomentumScrollEnd={(event) => {
                         if (mediaWidth > 0) {
                           setMediaIndex(Math.round(event.nativeEvent.contentOffset.x / mediaWidth));
@@ -222,10 +247,10 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
                     <Heart color={post.viewer?.echoed ? colors.coral : colors.setlogInk} fill={post.viewer?.echoed ? colors.coral : 'transparent'} size={22} strokeWidth={2.3} />
                     <Text style={styles.actionText}>{post.stats.echoes}</Text>
                   </Pressable>
-                  <View style={styles.actionButton}>
+                  <Pressable style={styles.actionButton} onPress={scrollToComments} accessibilityRole="button" accessibilityLabel="댓글로 이동">
                     <MessageCircle color={colors.setlogInk} size={22} strokeWidth={2.3} />
                     <Text style={styles.actionText}>{post.stats.replies}</Text>
-                  </View>
+                  </Pressable>
                   <Pressable style={styles.actionButton} disabled={submitting} onPress={() => runAction('save')}>
                     <Bookmark color={post.viewer?.saved ? colors.setlogMint : colors.setlogInk} fill={post.viewer?.saved ? colors.setlogMint : 'transparent'} size={22} strokeWidth={2.3} />
                     <Text style={styles.actionText}>{post.stats.saves}</Text>
@@ -235,6 +260,7 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
 
               {!locked ? <View style={styles.replyBox}>
                 <TextInput
+                  ref={inputRef}
                   value={replyText}
                   onChangeText={setReplyText}
                   placeholder={t('home.writeReply')}
@@ -247,7 +273,7 @@ export function PostDetailScreen({ postId, initialPost, sessionToken, onBack, on
                 </Pressable>
               </View> : null}
 
-              {!locked ? <View style={styles.commentsBlock}>
+              {!locked ? <View style={styles.commentsBlock} onLayout={(e) => { commentsAnchorY.current = e.nativeEvent.layout.y; }}>
                 <Text style={styles.sectionTitle}>{t('common.replies')}</Text>
                 {detail.comments.length ? detail.comments.map((comment) => (
                   <View key={comment.id} style={styles.commentRow}>

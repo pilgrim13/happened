@@ -154,7 +154,7 @@ export function CaptureScreen({ onUpload, onNotice }: Props) {
   const viewportHeight = useVisualViewportHeight();
   const viewfinderHeight = Math.max(260, Math.min(360, viewportHeight - 500));
   const [visibility, setVisibility] = useState<Visibility>('PublicAfter1h');
-  const [caption, setCaption] = useState(t('capture.defaultCaption'));
+  const [caption, setCaption] = useState('');
   const [placeName, setPlaceName] = useState('');
   const [mediaItems, setMediaItems] = useState<PickedMedia[]>([]);
   const [activeMediaIndex, setActiveMediaIndex] = useState(0);
@@ -285,7 +285,7 @@ export function CaptureScreen({ onUpload, onNotice }: Props) {
     try {
       await onUpload({
         visibility,
-        caption: caption.trim() || t('capture.defaultCaption'),
+        caption: caption.trim(),
         placeName: placeName.trim() || undefined,
         mediaItems: mediaItems.map((item) => ({
           mediaDataUrl: item.dataUrl,
@@ -372,7 +372,7 @@ export function CaptureScreen({ onUpload, onNotice }: Props) {
         <TextInput
           value={caption}
           onChangeText={setCaption}
-          placeholder={t('capture.caption')}
+          placeholder={t('capture.defaultCaption')}
           placeholderTextColor={colors.setlogFaint}
           style={styles.captionInput}
         />

@@ -67,7 +67,7 @@ export function useCaptureFlow() {
           lat: location.latitude,
           lng: location.longitude,
           placeName,
-          caption: caption || t('capture.defaultCaption'),
+          caption,
           visibility,
           mediaItems,
         });

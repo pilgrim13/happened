@@ -32,20 +32,26 @@ export function MediaRenderer({ uri, resizeMode = 'cover', style }: Props) {
   }
 
   if (Platform.OS === 'web') {
-    return createElement('video', {
-      src: uri,
-      controls: true,
-      muted: true,
-      playsInline: true,
-      preload: 'metadata',
-      style: {
-        ...StyleSheet.flatten(style),
-        display: 'block',
-        width: '100%',
-        height: '100%',
-        objectFit: resizeMode,
-      },
-    });
+    // Wrap video in a View that allows vertical touch to pass through to parent ScrollView,
+    // while video controls still work via tap.
+    return (
+      <View style={[style, { touchAction: 'pan-y' } as any]}>
+        {createElement('video', {
+          src: uri,
+          controls: true,
+          muted: true,
+          playsInline: true,
+          preload: 'metadata',
+          style: {
+            display: 'block',
+            width: '100%',
+            height: '100%',
+            objectFit: resizeMode,
+            touchAction: 'pan-y',
+          },
+        })}
+      </View>
+    );
   }
 
   return (

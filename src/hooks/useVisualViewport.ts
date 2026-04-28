@@ -13,6 +13,11 @@ export function useVisualViewport() {
       return undefined;
     }
 
+    // 데스크탑(fine pointer + hover)에서는 키보드 팝업이 없으므로 항상 0 반환
+    if (window.matchMedia('(pointer: fine) and (hover: hover)').matches) {
+      return undefined;
+    }
+
     const update = () => {
       const vv = window.visualViewport!;
       // 키보드 높이 = 전체 높이 - 보이는 영역 - 스크롤 오프셋
