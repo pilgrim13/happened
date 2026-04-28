@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 
 import {
   createMemory as createApiMemory,
@@ -16,25 +16,21 @@ import {
 } from '../services/happenedApi';
 import { getCurrentLocation } from '../services/location';
 import { useSession } from './SessionContext';
+import { FeedProvider, useFeedContext } from './FeedContext';
+import { NotificationsProvider, useNotificationsContext } from './NotificationsContext';
+import { PlacesProvider, usePlacesContext } from './PlacesContext';
+import { TimelineProvider, useTimelineContext } from './TimelineContext';
 import type {
   MemoryPost,
   MemoryPostAction,
-  NotificationItem,
-  PlaceBubble,
   SafetySummary,
   SearchResults,
-  TimelineMonth,
   Visibility,
 } from '../types/happened';
 
-type AppDataContextValue = {
-  feedPosts: MemoryPost[];
-  setFeedPosts: React.Dispatch<React.SetStateAction<MemoryPost[]>>;
-  nearbyPosts: MemoryPost[];
-  notifications: NotificationItem[];
-  setNotifications: React.Dispatch<React.SetStateAction<NotificationItem[]>>;
-  places: PlaceBubble[];
-  timeline: TimelineMonth[];
+// ─── Orchestrator context (actions + safetySummary) ──────────────────────────
+
+type AppDataOrchestratorValue = {
   safetySummary: SafetySummary | null;
   refresh: () => Promise<void>;
   refreshNearby: () => Promise<void>;
@@ -55,24 +51,17 @@ type AppDataContextValue = {
   search: (query: string) => Promise<SearchResults>;
 };
 
-const AppDataContext = createContext<AppDataContextValue | null>(null);
+const AppDataOrchestratorContext = createContext<AppDataOrchestratorValue | null>(null);
 
-export function AppDataProvider({ children }: { children: ReactNode }) {
+function AppDataOrchestrator({ children }: { children: ReactNode }) {
   const { session } = useSession();
-  const [feedPosts, setFeedPosts] = useState<MemoryPost[]>([]);
-  const [nearbyPosts, setNearbyPosts] = useState<MemoryPost[]>([]);
-  const [notifications, setNotifications] = useState<NotificationItem[]>([]);
-  const [places, setPlaces] = useState<PlaceBubble[]>([]);
-  const [timeline, setTimeline] = useState<TimelineMonth[]>([]);
+  const { setFeedPosts, setNearbyPosts, feedCursorRef, loadingMoreFeedRef, viewerCoordsRef, lastLocationFetchRef } = useFeedContext();
+  const { notifications, setNotifications } = useNotificationsContext();
+  /* notifications는 acknowledgeNotifications에서 read 여부 판단에 사용 */
+  const { setPlaces } = usePlacesContext();
+  const { setTimeline } = useTimelineContext();
   const [safetySummary, setSafetySummary] = useState<SafetySummary | null>(null);
   const token = session?.token;
-
-  // viewer 위치 캐시 (30초 쓰로틀)
-  const viewerCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
-  const lastLocationFetchRef = useRef<number>(0);
-  // 피드 페이지네이션
-  const feedCursorRef = useRef<string | null>(null);
-  const loadingMoreFeedRef = useRef(false);
 
   const refreshViewerCoords = useCallback(async () => {
     const now = Date.now();
@@ -84,7 +73,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     } catch {
       // 권한 거부 → null 유지 (모자이크 기본값)
     }
-  }, []);
+  }, [lastLocationFetchRef, viewerCoordsRef]);
 
   // 앱 진입 시 1회 위치 확보 (silent)
   useEffect(() => {
@@ -110,7 +99,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
         fetchSafetySummary(token).then(setSafetySummary).catch(() => undefined);
       }
     }, 0);
-  }, [token, refreshViewerCoords]);
+  }, [token, refreshViewerCoords, feedCursorRef, viewerCoordsRef, setFeedPosts, setPlaces, setTimeline, setNotifications]);
 
   useEffect(() => {
     refresh().catch(() => undefined);
@@ -136,7 +125,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setFeedPosts((current) => [result.memory, ...current.filter((post) => post.id !== result.memory.id)]);
       return result;
     },
-    [token],
+    [token, setFeedPosts],
   );
 
   const performPostAction = useCallback(
@@ -150,7 +139,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       fetchNotifications(token).then(setNotifications).catch(() => undefined);
       return result;
     },
-    [token],
+    [token, setFeedPosts, setNotifications],
   );
 
   const acknowledgeNotifications = useCallback(async () => {
@@ -160,7 +149,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     } catch {
       setNotifications((current) => current.map((n) => ({ ...n, read: true })));
     }
-  }, [notifications, token]);
+  }, [notifications, token, setNotifications]);
 
   const refreshNearby = useCallback(async () => {
     await refreshViewerCoords().catch(() => undefined);
@@ -169,7 +158,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     }
     const { items: posts } = await fetchFeed('Nearby', token, viewerCoordsRef.current);
     setNearbyPosts(posts);
-  }, [token, refreshViewerCoords]);
+  }, [token, refreshViewerCoords, viewerCoordsRef, setNearbyPosts]);
 
   const loadMoreFeed = useCallback(async () => {
     if (loadingMoreFeedRef.current || !feedCursorRef.current) return;
@@ -184,7 +173,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     } finally {
       loadingMoreFeedRef.current = false;
     }
-  }, [token]);
+  }, [token, feedCursorRef, loadingMoreFeedRef, viewerCoordsRef, setFeedPosts]);
 
   const editPost = useCallback(
     async (postId: string, input: { caption?: string; visibility?: Visibility }) => {
@@ -193,7 +182,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setNearbyPosts((current) => current.map((post) => (post.id === result.post.id ? result.post : post)));
       return result;
     },
-    [token],
+    [token, setFeedPosts, setNearbyPosts],
   );
 
   const deletePost = useCallback(
@@ -202,7 +191,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       setFeedPosts((current) => current.filter((post) => post.id !== postId));
       setNearbyPosts((current) => current.filter((post) => post.id !== postId));
     },
-    [token],
+    [token, setFeedPosts, setNearbyPosts],
   );
 
   const blockAuthor = useCallback(
@@ -216,15 +205,8 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
 
   const search = useCallback((query: string) => fetchSearchResults(query, token), [token]);
 
-  const value = useMemo<AppDataContextValue>(
+  const value = useMemo<AppDataOrchestratorValue>(
     () => ({
-      feedPosts,
-      setFeedPosts,
-      nearbyPosts,
-      notifications,
-      setNotifications,
-      places,
-      timeline,
       safetySummary,
       refresh,
       refreshNearby,
@@ -238,11 +220,6 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       search,
     }),
     [
-      feedPosts,
-      nearbyPosts,
-      notifications,
-      places,
-      timeline,
       safetySummary,
       refresh,
       refreshNearby,
@@ -257,11 +234,56 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <AppDataContext.Provider value={value}>{children}</AppDataContext.Provider>;
+  return <AppDataOrchestratorContext.Provider value={value}>{children}</AppDataOrchestratorContext.Provider>;
 }
 
-export function useAppData() {
-  const ctx = useContext(AppDataContext);
-  if (!ctx) throw new Error('useAppData must be used inside AppDataProvider');
-  return ctx;
+// ─── Public provider (서브 컨텍스트 중첩) ──────────────────────────────────────
+
+export function AppDataProvider({ children }: { children: ReactNode }) {
+  return (
+    <FeedProvider>
+      <NotificationsProvider>
+        <PlacesProvider>
+          <TimelineProvider>
+            <AppDataOrchestrator>
+              {children}
+            </AppDataOrchestrator>
+          </TimelineProvider>
+        </PlacesProvider>
+      </NotificationsProvider>
+    </FeedProvider>
+  );
 }
+
+// ─── Backward-compat hook ─────────────────────────────────────────────────────
+
+/**
+ * @deprecated 개별 hook(useFeed, useNotifications, usePlaces, useTimeline) 사용 권장.
+ * TODO: 각 consumer를 개별 hook으로 마이그레이션 후 제거.
+ */
+export function useAppData() {
+  const feed = useFeedContext();
+  const notifs = useNotificationsContext();
+  const places = usePlacesContext();
+  const timeline = useTimelineContext();
+  const orchestrator = useContext(AppDataOrchestratorContext);
+  if (!orchestrator) throw new Error('useAppData must be used inside AppDataProvider');
+
+  return {
+    feedPosts: feed.feedPosts,
+    setFeedPosts: feed.setFeedPosts,
+    nearbyPosts: feed.nearbyPosts,
+    notifications: notifs.notifications,
+    setNotifications: notifs.setNotifications,
+    places: places.places,
+    timeline: timeline.timeline,
+    ...orchestrator,
+  };
+}
+
+// ─── 개별 hook re-export (향후 직접 임포트용) ─────────────────────────────────
+
+export { useFeed } from './FeedContext';
+export { useNotifications } from './NotificationsContext';
+export { usePlaces } from './PlacesContext';
+export { useTimeline } from './TimelineContext';
