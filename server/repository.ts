@@ -1553,6 +1553,9 @@ function rowToPost(row: DbPostRow): MemoryPost {
     unlockState: row.unlock_state,
     visibility: row.visibility,
     createdAt: new Date(row.created_at).toISOString(),
+    unlockAt: row.visibility === 'PublicAfter1h'
+      ? new Date(new Date(row.created_at).getTime() + 60 * 60 * 1000).toISOString()
+      : null,
     caption: row.caption,
     timeLabel: row.time_label,
     filmStamp: row.film_stamp,

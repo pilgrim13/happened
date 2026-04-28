@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { getLocales } from 'expo-localization';
 import { Platform } from 'react-native';
 
 import type { FeedMode, Visibility } from '../types/happened';
@@ -632,14 +633,8 @@ function readInitialLanguage(): LanguageCode {
     return stored;
   }
 
-  const preferredLanguages = [...(window.navigator.languages ?? []), window.navigator.language].filter(Boolean);
-  const preferred = preferredLanguages.find((candidate) => candidate.toLowerCase().startsWith('ko') || candidate.toLowerCase().startsWith('en'));
-
-  if (preferred?.toLowerCase().startsWith('en')) {
-    return 'en';
-  }
-
-  return 'ko';
+  const deviceLocale = getLocales()[0]?.languageCode ?? 'ko';
+  return deviceLocale.startsWith('en') ? 'en' : 'ko';
 }
 
 function interpolate(template: string, values?: Record<string, string | number>) {

@@ -65,16 +65,16 @@ export function matchesQuery(post: MemoryPost, query: string) {
 }
 
 function getPublicCountdownMins(item: MemoryPost, currentUserId?: string): number | null {
-  if (
-    item.visibility !== 'PublicAfter1h' ||
-    !item.createdAt ||
-    !currentUserId ||
-    item.authorId !== currentUserId
-  ) {
+  if (item.visibility !== 'PublicAfter1h' || !currentUserId || item.authorId !== currentUserId) {
     return null;
   }
-  const elapsedMs = Date.now() - new Date(item.createdAt).getTime();
-  const remainMs = 60 * 60 * 1000 - elapsedMs;
+  const unlockAtMs = item.unlockAt
+    ? new Date(item.unlockAt).getTime()
+    : item.createdAt
+      ? new Date(item.createdAt).getTime() + 60 * 60 * 1000
+      : null;
+  if (!unlockAtMs) return null;
+  const remainMs = unlockAtMs - Date.now();
   if (remainMs <= 0) return null;
   return Math.ceil(remainMs / (60 * 1000));
 }

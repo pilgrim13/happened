@@ -42,7 +42,7 @@ const envSchema = z.object({
   DATABASE_URL: z.string().optional(),
   APP_PUBLIC_URL: z.string().optional(),
   DEV_TEST_PASSWORD: z.string().optional(),
-  RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().positive().default(100),
+  RATE_LIMIT_GLOBAL_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_AUTH_MAX: z.coerce.number().int().positive().default(10),
   RATE_LIMIT_WINDOW_MS: z.coerce.number().int().positive().default(60_000),
   MEDIA_STORAGE_DRIVER: z.string().default('local'),
@@ -89,7 +89,7 @@ export function getConfig(env: NodeJS.ProcessEnv = process.env): ApiConfig {
     appPublicUrl: e.APP_PUBLIC_URL ?? 'http://localhost:8081',
     devTestPassword: e.DEV_TEST_PASSWORD ?? 'happened-test-1',
     rateLimit: {
-      globalMax: e.RATE_LIMIT_GLOBAL_MAX,
+      globalMax: e.RATE_LIMIT_GLOBAL_MAX ?? (isProd ? 200 : 1000),
       authMax: e.RATE_LIMIT_AUTH_MAX,
       timeWindowMs: e.RATE_LIMIT_WINDOW_MS,
     },

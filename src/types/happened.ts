@@ -24,6 +24,7 @@ export type MemoryPost = {
   unlockState: UnlockState;
   visibility: Visibility;
   createdAt?: string;
+  unlockAt?: string | null;
   caption: string;
   timeLabel: string;
   filmStamp: string;

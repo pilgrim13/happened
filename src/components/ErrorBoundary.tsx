@@ -6,18 +6,19 @@ import { colors, fonts, radius, spacing } from '../theme/tokens';
 interface State {
   hasError: boolean;
   error: Error | null;
+  retryKey: number;
 }
 
 export class ErrorBoundary extends React.Component<React.PropsWithChildren, State> {
-  state: State = { hasError: false, error: null };
+  state: State = { hasError: false, error: null, retryKey: 0 };
 
-  static getDerivedStateFromError(error: Error): State {
+  static getDerivedStateFromError(error: Error): Partial<State> {
     return { hasError: true, error };
   }
 
   render() {
     if (!this.state.hasError) {
-      return this.props.children;
+      return <React.Fragment key={this.state.retryKey}>{this.props.children}</React.Fragment>;
     }
     return (
       <View style={styles.container}>
@@ -27,7 +28,7 @@ export class ErrorBoundary extends React.Component<React.PropsWithChildren, Stat
         ) : null}
         <TouchableOpacity
           style={styles.button}
-          onPress={() => this.setState({ hasError: false, error: null })}
+          onPress={() => this.setState((s) => ({ hasError: false, error: null, retryKey: s.retryKey + 1 }))}
         >
           <Text style={styles.buttonText}>다시 시도</Text>
         </TouchableOpacity>

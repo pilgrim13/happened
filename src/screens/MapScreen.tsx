@@ -57,7 +57,7 @@ function formatDistance(value: number | null, pendingLabel: string) {
 }
 
 function getPlaceName(place: PlaceBubble) {
-  return place.placeName ?? getDetailPlaceName(place.id);
+  return place.placeName ?? place.name;
 }
 
 function projectCoordinate(coordinate: Coordinates, zoom: number): ProjectedPoint {
@@ -469,17 +469,6 @@ export function MapScreen({ places = placeBubbles, userLocation, onOpenPlace, on
   );
 }
 
-function getDetailPlaceName(placeId: string) {
-  const placeNames: Record<string, string> = {
-    seolleung: 'Seolleung Station Cafe',
-    office: 'Gangnam Office',
-    cafe: 'Corner Cafe',
-    school: 'Daechi School Yard',
-    river: 'Han River Steps',
-  };
-
-  return placeNames[placeId] ?? 'Seolleung Station Cafe';
-}
 
 const styles = StyleSheet.create({
   screen: {

@@ -16,17 +16,17 @@ export function useSharePost() {
           ? `${window.location.origin}?stage=app&screen=home&homePost=0`
           : 'https://happened.app';
       const shareText = `${post.authorName} at ${post.placeName}: ${post.caption}`;
-      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && (navigator as any).share) {
-        await (navigator as any).share({ title: 'Happened', text: shareText, url: shareUrl });
+      if (Platform.OS === 'web' && typeof navigator !== 'undefined' && navigator.share) {
+        await navigator.share({ title: 'Happened', text: shareText, url: shareUrl });
         showNotice(t('app.shareOpened'));
         return;
       }
       if (
         Platform.OS === 'web' &&
         typeof navigator !== 'undefined' &&
-        (navigator as any).clipboard
+        navigator.clipboard
       ) {
-        await (navigator as any).clipboard.writeText(`${shareText}\n${shareUrl}`);
+        await navigator.clipboard.writeText(`${shareText}\n${shareUrl}`);
         showNotice(t('app.shareCopied'));
         return;
       }
