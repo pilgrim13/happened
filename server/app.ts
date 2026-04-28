@@ -11,6 +11,7 @@ import { createMailer } from './mailer';
 import { createObjectStorage, mediaKey } from './storage';
 import { createRepository, RepositoryError, reverseGeocode } from './repository';
 import { verifyAppleToken } from './auth/appleVerify';
+import { requireAuth } from './auth/authenticate';
 import {
   authHeaderSchema,
   authLoginRequestSchema,
@@ -106,18 +107,24 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   const objectStorage = config.storage ? createObjectStorage(config.storage) : null;
   const mailer = config.mailer ? createMailer(config.mailer) : null;
 
+  // request.user decorator (preValidation에서 인증된 user 캐시용)
+  app.decorateRequest('user', null);
+
   // x-request-id reflection
   app.addHook('onRequest', async (request, reply) => {
     reply.header('x-request-id', request.id);
   });
 
-  // 인증된 요청이면 userId를 로그 컨텍스트에 포함
+  // 인증된 요청이면 userId를 로그 컨텍스트에 포함하고 request.user에 캐시
   app.addHook('preValidation', async (request) => {
-    const auth = request.headers.authorization;
-    if (auth) {
+    const rawAuth = request.headers.authorization;
+    // "Bearer <token>" 형식에서 token만 추출 (authHeaderSchema와 동일 로직)
+    if (rawAuth?.startsWith('Bearer ')) {
+      const token = rawAuth.slice('Bearer '.length);
       try {
-        const session = await repository.getSession(auth);
+        const session = await repository.getSession(token);
         if (session) {
+          request.user = session.user;
           request.log = request.log.child({ userId: session.user.id });
         }
       } catch {
@@ -285,11 +292,8 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     if (!objectStorage) {
       return reply.status(503).send({ error: 'storage_unavailable', message: '파일 저장소가 구성되어 있지 않아요.' });
     }
-    const token = authHeaderSchema.parse(request.headers.authorization);
-    const session = await repository.getSession(token);
-    if (!session) {
-      return reply.status(401).send({ error: 'auth_failed', message: '로그인이 필요해요.' });
-    }
+    // preValidation에서 캐시된 user 재사용 → repository.getSession 중복 호출 방지
+    const user = requireAuth(request);
     const body = presignRequestSchema.parse(request.body);
 
     const allowed = body.kind === 'photo' ? ALLOWED_PHOTO_MIMES : ALLOWED_VIDEO_MIMES;
@@ -303,14 +307,14 @@ export async function buildServer(config: ApiConfig = getConfig()) {
     const ext = body.ext || (body.contentType.split('/')[1] ?? 'bin');
     // postId placeholder — uses a UUID for grouping, client supplies as "draft".
     const draftPostId = `draft-${Math.random().toString(36).slice(2, 10)}`;
-    const key = mediaKey(session.user.id, draftPostId, ext);
+    const key = mediaKey(user.id as string, draftPostId, ext);
     const presigned = await objectStorage.createPresignedUploadUrl({
       key,
       contentType: body.contentType,
       maxBytes: body.contentLength,
       expiresInSeconds: 600,
     });
-    request.log.info({ key, kind: body.kind, userId: session.user.id }, 'presigned upload issued');
+    request.log.info({ key, kind: body.kind, userId: user.id }, 'presigned upload issued');
     return { data: { ...presigned, key } };
   });
 
@@ -438,13 +442,10 @@ export async function buildServer(config: ApiConfig = getConfig()) {
   // 사용자 GPS 위치 기반 장소 생성 또는 기존 장소 반환
   app.post('/v1/places', async (request, reply) => {
     const body = placeCreateSchema.parse(request.body);
-    const sessionToken = authHeaderSchema.parse(request.headers.authorization);
-    const session = await repository.getSession(sessionToken);
-    if (!session) {
-      return reply.status(401).send({ error: 'auth_failed', message: '로그인이 필요해요.' });
-    }
+    // preValidation에서 캐시된 user 재사용 → repository.getSession 중복 호출 방지
+    const user = requireAuth(request);
     const place = await repository.createOrFindPlace({
-      userId: session.user.id,
+      userId: user.id as string,
       lat: body.lat,
       lng: body.lng,
       name: body.name,
