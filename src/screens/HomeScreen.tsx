@@ -1,7 +1,7 @@
 import { LinearGradient } from 'expo-linear-gradient';
 import { Bell, Bookmark, Camera, ChevronLeft, ChevronRight, Clock, Globe, Heart, Lock, MapPin, MessageCircle, MoreHorizontal, Plus, RadioTower, RefreshCw, Search, Send } from 'lucide-react-native';
-import { useEffect, useRef, useState } from 'react';
-import { Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { ActivityIndicator, Alert, FlatList, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { MediaRenderer } from '../components/MediaRenderer';
@@ -35,6 +35,7 @@ type HomeScreenProps = {
   onOpenProfile?: (handle: string) => void;
   recallCount?: number;
   onOpenRecall?: () => void;
+  onLoadMore?: () => Promise<void>;
 };
 
 function formatCount(value: number) {
@@ -133,6 +134,7 @@ export function HomeScreen({
   onOpenProfile,
   recallCount = 0,
   onOpenRecall,
+  onLoadMore,
 }: HomeScreenProps) {
   const insets = useSafeAreaInsets();
   const { language, t } = useI18n();
@@ -144,6 +146,7 @@ export function HomeScreen({
   const [remoteSearch, setRemoteSearch] = useState<SearchResults | null>(null);
   const [searching, setSearching] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const [loadingMore, setLoadingMore] = useState(false);
   const prevModeRef = useRef(selectedMode);
   const trimmedQuery = query.trim();
   const usingRemoteSearch = Boolean(remoteSearch && trimmedQuery.length >= 2);
@@ -218,13 +221,39 @@ export function HomeScreen({
       .finally(() => setRefreshing(false));
   };
 
+  const handleLoadMore = useCallback(() => {
+    if (!onLoadMore || loadingMore) return;
+    setLoadingMore(true);
+    onLoadMore().finally(() => setLoadingMore(false));
+  }, [onLoadMore, loadingMore]);
+
+  const keyExtractor = useCallback((item: MemoryPost) => item.id, []);
+
+  const renderItem = useCallback(({ item }: { item: MemoryPost }) => (
+    <PostCard
+      item={item}
+      currentUserId={currentUserId}
+      onOpenPlace={onOpenPlace}
+      onCaptureAtPlace={onCaptureAtPlace}
+      onNotice={onNotice}
+      onPostAction={onPostAction}
+      onEditPost={onEditPost}
+      onDeletePost={onDeletePost}
+      onSharePost={onSharePost}
+      onBlockAuthor={onBlockAuthor}
+      onOpenPost={onOpenPost}
+      onOpenProfile={onOpenProfile}
+      t={t}
+    />
+  ), [currentUserId, onOpenPlace, onCaptureAtPlace, onNotice, onPostAction, onEditPost, onDeletePost, onSharePost, onBlockAuthor, onOpenPost, onOpenProfile, t]);
+
   return (
     <View style={styles.screen}>
       <FlatList
         style={styles.list}
         data={visiblePosts}
         key={selectedMode}
-        keyExtractor={(item) => item.id}
+        keyExtractor={keyExtractor}
         ListHeaderComponent={
           <View style={[styles.header, { paddingTop: insets.top + 10 }]}>
             <View style={styles.topRow}>
@@ -376,23 +405,10 @@ export function HomeScreen({
         onRefresh={onRefresh ? refreshFeed : undefined}
         contentContainerStyle={[styles.listContent, { paddingBottom: Math.max(insets.bottom + 102, 118) }]}
         showsVerticalScrollIndicator={false}
-        renderItem={({ item }) => (
-          <PostCard
-            item={item}
-            currentUserId={currentUserId}
-            onOpenPlace={onOpenPlace}
-            onCaptureAtPlace={onCaptureAtPlace}
-            onNotice={onNotice}
-            onPostAction={onPostAction}
-            onEditPost={onEditPost}
-            onDeletePost={onDeletePost}
-            onSharePost={onSharePost}
-            onBlockAuthor={onBlockAuthor}
-            onOpenPost={onOpenPost}
-            onOpenProfile={onOpenProfile}
-            t={t}
-          />
-        )}
+        renderItem={renderItem}
+        onEndReached={onLoadMore ? handleLoadMore : undefined}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={loadingMore ? <ActivityIndicator style={styles.loadMoreSpinner} color={colors.setlogMuted} /> : null}
       />
     </View>
   );
@@ -413,7 +429,7 @@ function getPublicCountdownMins(item: MemoryPost, currentUserId?: string): numbe
   return Math.ceil(remainMs / (60 * 1000));
 }
 
-function PostCard({
+const PostCard = React.memo(function PostCard({
   item,
   currentUserId,
   onOpenPlace,
@@ -803,7 +819,7 @@ function PostCard({
       </Pressable>
     </View>
   );
-}
+});
 
 const styles = StyleSheet.create({
   screen: {
@@ -814,6 +830,9 @@ const styles = StyleSheet.create({
   list: {
     width: '100%',
     maxWidth: 560,
+  },
+  loadMoreSpinner: {
+    paddingVertical: 16,
   },
   listContent: {
     paddingHorizontal: 14,

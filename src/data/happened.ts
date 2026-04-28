@@ -1,4 +1,4 @@
-import { colors } from '../theme/tokens';
+import { colors } from '../theme/tokens.shared';
 import type { FeedMode, MemoryPost, PlaceBubble, TimelineMonth } from '../types/happened';
 
 export const feedModes: FeedMode[] = ['Following', 'Nearby', 'Memories'];

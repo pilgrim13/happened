@@ -160,17 +160,21 @@ async function requestApi<T>(path: string, init?: RequestInit, sessionToken?: st
   return body as T;
 }
 
-export async function fetchFeed(mode?: FeedMode, sessionToken?: string | null, viewerCoords?: { lat: number; lng: number }) {
+export async function fetchFeed(mode?: FeedMode, sessionToken?: string | null, viewerCoords?: { lat: number; lng: number }, cursor?: string | null) {
   const params = new URLSearchParams();
   if (mode) params.set('mode', mode);
   if (viewerCoords) {
     params.set('lat', String(viewerCoords.lat));
     params.set('lng', String(viewerCoords.lng));
   }
+  if (cursor) params.set('cursor', cursor);
   const query = params.toString() ? `?${params.toString()}` : '';
   const response = await requestApi<ApiEnvelope<{ items: MemoryPost[]; nextCursor: string | null }>>(`/v1/feed${query}`, undefined, sessionToken);
 
-  return (response.data?.items ?? []).map(absolutizeMediaUrl);
+  return {
+    items: (response.data?.items ?? []).map(absolutizeMediaUrl),
+    nextCursor: response.data?.nextCursor ?? null,
+  };
 }
 
 export async function fetchSearchResults(query: string, sessionToken?: string | null) {

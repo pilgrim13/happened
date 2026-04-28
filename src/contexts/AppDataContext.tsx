@@ -38,6 +38,7 @@ type AppDataContextValue = {
   safetySummary: SafetySummary | null;
   refresh: () => Promise<void>;
   refreshNearby: () => Promise<void>;
+  loadMoreFeed: () => Promise<void>;
   uploadMemory: (input: {
     lat: number;
     lng: number;
@@ -69,6 +70,9 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
   // viewer 위치 캐시 (30초 쓰로틀)
   const viewerCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
   const lastLocationFetchRef = useRef<number>(0);
+  // 피드 페이지네이션
+  const feedCursorRef = useRef<string | null>(null);
+  const loadingMoreFeedRef = useRef(false);
 
   const refreshViewerCoords = useCallback(async () => {
     const now = Date.now();
@@ -91,8 +95,10 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     // 위치 갱신 시도 (30초 쓰로틀)
     await refreshViewerCoords().catch(() => undefined);
 
-    // feed 먼저 fetch → 즉시 렌더링
-    const posts = await fetchFeed(undefined, token, viewerCoordsRef.current ?? undefined);
+    // feed 먼저 fetch → 즉시 렌더링 (cursor 리셋)
+    feedCursorRef.current = null;
+    const { items: posts, nextCursor } = await fetchFeed(undefined, token, viewerCoordsRef.current ?? undefined);
+    feedCursorRef.current = nextCursor;
     setFeedPosts(posts);
 
     // 나머지는 비동기 백그라운드
@@ -161,9 +167,24 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
     if (!viewerCoordsRef.current) {
       throw new Error('위치 권한이 필요해요');
     }
-    const posts = await fetchFeed('Nearby', token, viewerCoordsRef.current);
+    const { items: posts } = await fetchFeed('Nearby', token, viewerCoordsRef.current);
     setNearbyPosts(posts);
   }, [token, refreshViewerCoords]);
+
+  const loadMoreFeed = useCallback(async () => {
+    if (loadingMoreFeedRef.current || !feedCursorRef.current) return;
+    loadingMoreFeedRef.current = true;
+    try {
+      const { items, nextCursor } = await fetchFeed(undefined, token, viewerCoordsRef.current ?? undefined, feedCursorRef.current);
+      feedCursorRef.current = nextCursor;
+      setFeedPosts((current) => {
+        const existingIds = new Set(current.map((p) => p.id));
+        return [...current, ...items.filter((p) => !existingIds.has(p.id))];
+      });
+    } finally {
+      loadingMoreFeedRef.current = false;
+    }
+  }, [token]);
 
   const editPost = useCallback(
     async (postId: string, input: { caption?: string; visibility?: Visibility }) => {
@@ -207,6 +228,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       safetySummary,
       refresh,
       refreshNearby,
+      loadMoreFeed,
       uploadMemory,
       performPostAction,
       editPost,
@@ -224,6 +246,7 @@ export function AppDataProvider({ children }: { children: ReactNode }) {
       safetySummary,
       refresh,
       refreshNearby,
+      loadMoreFeed,
       uploadMemory,
       performPostAction,
       editPost,

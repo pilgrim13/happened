@@ -34,6 +34,7 @@ export function HomeRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Home'
     search,
     refresh,
     refreshNearby,
+    loadMoreFeed,
   } = useAppData();
   const { session } = useSession();
   const { showNotice } = useNotice();
@@ -90,6 +91,7 @@ export function HomeRoute(_props: BottomTabScreenProps<MainTabsParamList, 'Home'
       }
       recallCount={recallCount}
       onOpenRecall={() => navigation.navigate('Recall')}
+      onLoadMore={loadMoreFeed}
     />
   );
 }

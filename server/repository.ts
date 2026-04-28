@@ -1,7 +1,7 @@
 import { createHash, randomBytes, randomUUID, scryptSync, timingSafeEqual } from 'node:crypto';
 
 import { memoryPosts, placeBubbles, timelineMonths } from '../src/data/happened';
-import { colors } from '../src/theme/tokens';
+import { colors } from '../src/theme/tokens.shared';
 import type {
   AuthSession,
   CheckInToken,
