@@ -12,7 +12,6 @@ type FeedContextValue = {
   feedCursorRef: MutableRefObject<string | null>;
   loadingMoreFeedRef: MutableRefObject<boolean>;
   viewerCoordsRef: MutableRefObject<{ lat: number; lng: number } | null>;
-  lastLocationFetchRef: MutableRefObject<number>;
 };
 
 const FeedContext = createContext<FeedContextValue | null>(null);
@@ -23,7 +22,6 @@ export function FeedProvider({ children }: { children: ReactNode }) {
   const feedCursorRef = useRef<string | null>(null);
   const loadingMoreFeedRef = useRef(false);
   const viewerCoordsRef = useRef<{ lat: number; lng: number } | null>(null);
-  const lastLocationFetchRef = useRef<number>(0);
 
   const value = useMemo<FeedContextValue>(
     () => ({
@@ -34,7 +32,6 @@ export function FeedProvider({ children }: { children: ReactNode }) {
       feedCursorRef,
       loadingMoreFeedRef,
       viewerCoordsRef,
-      lastLocationFetchRef,
     }),
     [feedPosts, nearbyPosts],
   );

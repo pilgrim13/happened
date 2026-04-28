@@ -17,6 +17,10 @@ export function distanceMeters(a: Coordinates, b: Coordinates) {
   return Math.round(earthRadiusMeters * 2 * Math.atan2(Math.sqrt(h), Math.sqrt(1 - h)));
 }
 
+// 모듈 스코프 인메모리 캐시 — 60초 유효
+const LOCATION_CACHE_TTL_MS = 60_000;
+let _locationCache: { location: UserLocation; timestamp: number } | null = null;
+
 function getBrowserLocation() {
   return new Promise<UserLocation>((resolve, reject) => {
     if (typeof navigator === 'undefined' || !navigator.geolocation) {
@@ -33,17 +37,31 @@ function getBrowserLocation() {
         }),
       () => reject(new Error('Location permission was not granted.')),
       {
-        enableHighAccuracy: true,
-        maximumAge: 20_000,
+        enableHighAccuracy: false,
+        maximumAge: LOCATION_CACHE_TTL_MS,
         timeout: 10_000,
       },
     );
   });
 }
 
-export async function getCurrentLocation(): Promise<UserLocation> {
+/**
+ * 현재 위치를 반환한다.
+ * - 기본: 60초 인메모리 캐시 사용 (배터리 절약)
+ * - forceRefresh: true → 캐시 무시하고 새로 fetch
+ */
+export async function getCurrentLocation(
+  { forceRefresh = false }: { forceRefresh?: boolean } = {},
+): Promise<UserLocation> {
+  // 캐시 히트
+  if (!forceRefresh && _locationCache && Date.now() - _locationCache.timestamp < LOCATION_CACHE_TTL_MS) {
+    return _locationCache.location;
+  }
+
   if (Platform.OS === 'web') {
-    return getBrowserLocation();
+    const location = await getBrowserLocation();
+    _locationCache = { location, timestamp: Date.now() };
+    return location;
   }
 
   const permission = await Location.requestForegroundPermissionsAsync();
@@ -52,13 +70,16 @@ export async function getCurrentLocation(): Promise<UserLocation> {
     throw new Error('Location permission was not granted.');
   }
 
-  const location = await Location.getCurrentPositionAsync({
-    accuracy: Location.Accuracy.High,
+  const result = await Location.getCurrentPositionAsync({
+    accuracy: Location.Accuracy.Balanced,
   });
 
-  return {
-    latitude: location.coords.latitude,
-    longitude: location.coords.longitude,
-    accuracyMeters: location.coords.accuracy,
+  const location: UserLocation = {
+    latitude: result.coords.latitude,
+    longitude: result.coords.longitude,
+    accuracyMeters: result.coords.accuracy,
   };
+
+  _locationCache = { location, timestamp: Date.now() };
+  return location;
 }

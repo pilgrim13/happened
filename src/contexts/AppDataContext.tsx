@@ -55,7 +55,7 @@ const AppDataOrchestratorContext = createContext<AppDataOrchestratorValue | null
 
 function AppDataOrchestrator({ children }: { children: ReactNode }) {
   const { session } = useSession();
-  const { setFeedPosts, setNearbyPosts, feedCursorRef, loadingMoreFeedRef, viewerCoordsRef, lastLocationFetchRef } = useFeedContext();
+  const { setFeedPosts, setNearbyPosts, feedCursorRef, loadingMoreFeedRef, viewerCoordsRef } = useFeedContext();
   const { notifications, setNotifications } = useNotificationsContext();
   /* notifications는 acknowledgeNotifications에서 read 여부 판단에 사용 */
   const { setPlaces } = usePlacesContext();
@@ -64,16 +64,14 @@ function AppDataOrchestrator({ children }: { children: ReactNode }) {
   const token = session?.token;
 
   const refreshViewerCoords = useCallback(async () => {
-    const now = Date.now();
-    if (now - lastLocationFetchRef.current < 30_000) return;
-    lastLocationFetchRef.current = now;
     try {
+      // location 서비스 60s 캐시에 위임 — 별도 throttle 불필요
       const loc = await getCurrentLocation();
       viewerCoordsRef.current = { lat: loc.latitude, lng: loc.longitude };
     } catch {
       // 권한 거부 → null 유지 (모자이크 기본값)
     }
-  }, [lastLocationFetchRef, viewerCoordsRef]);
+  }, [viewerCoordsRef]);
 
   // 앱 진입 시 1회 위치 확보 (silent)
   useEffect(() => {
@@ -81,7 +79,7 @@ function AppDataOrchestrator({ children }: { children: ReactNode }) {
   }, [refreshViewerCoords]);
 
   const refresh = useCallback(async () => {
-    // 위치 갱신 시도 (30초 쓰로틀)
+    // 위치 갱신 시도 (location 서비스 60s 캐시)
     await refreshViewerCoords().catch(() => undefined);
 
     // feed 먼저 fetch → 즉시 렌더링 (cursor 리셋)

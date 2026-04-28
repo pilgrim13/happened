@@ -219,6 +219,25 @@ export function MapScreen({ places = placeBubbles, userLocation, onOpenPlace, on
   const zoomRef = useRef(zoom);
   const metersPerPixel = getMetersPerPixel(center.latitude, zoom);
   const { tiles, bounds } = useMemo(() => buildTiles(center, frameWidth, mapHeight, zoom), [center, frameWidth, mapHeight, zoom]);
+
+  // 타일 캐시 — 이전 타일 Set을 유지, buildTiles 결과와 diff하여 변경분만 mount/unmount
+  const tileMapRef = useRef(new Map<string, { key: string; url: string; left: number; top: number }>());
+  const displayTiles = useMemo(() => {
+    const map = tileMapRef.current;
+    const activeKeys = new Set(tiles.map((t) => t.key));
+
+    // 뷰포트 밖 타일 제거
+    for (const key of map.keys()) {
+      if (!activeKeys.has(key)) map.delete(key);
+    }
+
+    // 신규/위치 변경 타일 추가
+    for (const tile of tiles) {
+      map.set(tile.key, tile);
+    }
+
+    return Array.from(map.values());
+  }, [tiles]);
   const userPoint = userLocation ? getScreenPoint(userLocation, bounds, zoom) : null;
 
   useEffect(() => {
@@ -328,7 +347,7 @@ export function MapScreen({ places = placeBubbles, userLocation, onOpenPlace, on
           </View>
 
           <View testID="map-stage" style={[styles.mapStage, mapWebInteractionStyle, { height: mapHeight }]} {...panResponder.panHandlers}>
-            {tiles.map((tile) => (
+            {displayTiles.map((tile) => (
               <Image
                 key={tile.key}
                 source={{ uri: tile.url }}

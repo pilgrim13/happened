@@ -1,4 +1,36 @@
 // platform-agnostic 토큰 — server/node 환경에서도 안전하게 import 가능
+
+// ─── 다크모드 팔레트 ───────────────────────────────────────────────────────────
+/** 라이트 모드 시맨틱 색상 (현행 setlog warm-cream 스타일) */
+export const lightColors = {
+  bg: '#FFF8EF',
+  surface: '#FFFEF8',
+  ink: '#17120F',
+  muted: '#746B62',
+  faint: '#ADA49A',
+  line: 'rgba(23, 18, 15, 0.14)',
+  pink: '#FFB7C8',
+  lavender: '#BDA8FF',
+  mint: '#87F0B6',
+  blue: '#B9D8FF',
+  yellow: '#FFE893',
+} as const;
+
+/** 다크 모드 시맨틱 색상 (deep-space 스타일) */
+export const darkColors = {
+  bg: '#05070D',
+  surface: 'rgba(13, 18, 26, 0.88)',
+  ink: '#F5F7F2',
+  muted: 'rgba(245, 247, 242, 0.68)',
+  faint: 'rgba(245, 247, 242, 0.42)',
+  line: 'rgba(255, 255, 255, 0.12)',
+  pink: '#FF6F61',
+  lavender: '#9B8CFF',
+  mint: '#C7F95B',
+  blue: '#39D9F2',
+  yellow: '#F8D84E',
+} as const;
+
 export const colors = {
   ink: '#05070D',
   graphite: '#0B0F14',

@@ -11,12 +11,13 @@ import { SessionProvider } from './src/contexts/SessionContext';
 import { useWebViewportShell } from './src/hooks/useWebViewportShell';
 import { I18nProvider } from './src/i18n';
 import { RootNavigator } from './src/navigation/RootNavigator';
+import { ThemeProvider } from './src/theme/ThemeContext';
 
 function AppShell() {
   useWebViewportShell();
   return (
     <>
-      <StatusBar style="dark" />
+      <StatusBar style="auto" />
       <RootNavigator />
       <NoticeOverlay />
     </>
@@ -28,17 +29,19 @@ export default function App() {
     <ErrorBoundary>
     <GestureHandlerRootView style={{ flex: 1 }}>
       <SafeAreaProvider>
-        <I18nProvider>
-          <NoticeProvider>
-            <SessionProvider>
-              <AppDataProvider>
-                <CaptureProvider>
-                  <AppShell />
-                </CaptureProvider>
-              </AppDataProvider>
-            </SessionProvider>
-          </NoticeProvider>
-        </I18nProvider>
+        <ThemeProvider>
+          <I18nProvider>
+            <NoticeProvider>
+              <SessionProvider>
+                <AppDataProvider>
+                  <CaptureProvider>
+                    <AppShell />
+                  </CaptureProvider>
+                </AppDataProvider>
+              </SessionProvider>
+            </NoticeProvider>
+          </I18nProvider>
+        </ThemeProvider>
       </SafeAreaProvider>
     </GestureHandlerRootView>
     </ErrorBoundary>
