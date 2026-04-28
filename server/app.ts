@@ -10,6 +10,7 @@ import { createMediaStorage } from './media';
 import { createMailer } from './mailer';
 import { createObjectStorage, mediaKey } from './storage';
 import { createRepository, RepositoryError, reverseGeocode } from './repository';
+import { verifyAppleToken } from './auth/appleVerify';
 import {
   authHeaderSchema,
   authLoginRequestSchema,
@@ -548,21 +549,22 @@ export async function buildServer(config: ApiConfig = getConfig()) {
 
   app.post('/v1/auth/apple', authRateLimit as any, async (request, reply) => {
     const body = appleAuthSchema.parse(request.body);
-    // TODO: Apple JWT signature 검증 필요 (다음 PR — apple-signin-auth 라이브러리)
-    // 현재는 payload decode 후 sub(Apple user ID)만 추출
-    const parts = body.identityToken.split('.');
-    if (parts.length !== 3) {
-      return reply.status(400).send({ error: 'bad_request', message: 'Apple 로그인 토큰 형식이 올바르지 않아요.' });
-    }
-    const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8')) as { sub?: string; email?: string };
-    const appleUserId = payload.sub;
-    if (!appleUserId) {
-      return reply.status(400).send({ error: 'bad_request', message: 'Apple 로그인 토큰에 사용자 정보가 없어요.' });
+    let appleUserId: string;
+    let appleEmail: string | undefined;
+    try {
+      const payload = await verifyAppleToken(body.identityToken);
+      appleUserId = payload.sub;
+      appleEmail = payload.email;
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'Apple 토큰 검증 실패';
+      // prod에서 환경변수 미설정이면 500, 그 외 토큰 오류는 401
+      const status = (err instanceof Error && err.message.includes('환경변수')) ? 500 : 401;
+      return reply.status(status).send({ error: 'INVALID_APPLE_TOKEN', message: msg });
     }
     const displayName = [body.fullName?.givenName, body.fullName?.familyName].filter(Boolean).join(' ') || null;
     const session = await repository.loginOrRegisterAppleUser({
       appleUserId,
-      email: payload.email ?? null,
+      email: appleEmail ?? null,
       displayName,
       userAgent: request.headers['user-agent'] ?? null,
       ip: request.ip,
